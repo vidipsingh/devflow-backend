@@ -2,6 +2,8 @@ package api
 
 import (
 	"devflow-backend/internal/api/handlers"
+    "os"
+    "strings"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -10,8 +12,14 @@ import (
 func NewRouter() *gin.Engine {
 	r := gin.Default()
 
+	originsEnv := os.Getenv("ALLOWED_ORIGINS")
+    origins := []string{"http://localhost:3000"}
+    if originsEnv != "" {
+        origins = strings.Split(originsEnv, ",")
+    }
+
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "https://your-devflow-domain.vercel.app"},
+		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
