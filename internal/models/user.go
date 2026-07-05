@@ -8,9 +8,13 @@ import (
 
 type User struct {
 	ID           bson.ObjectID      `bson:"_id,omitempty"    json:"id"`
+	Name         string        		`bson:"name"             json:"name"`
 	Username     string             `bson:"username"         json:"username"`
 	Email        string             `bson:"email"            json:"email"`
-	PasswordHash *string            `bson:"passwordHash"     json:"-"`
+	PasswordHash string             `bson:"passwordHash"      json:"-"`
+	Plan         string        		`bson:"plan"			 json:"plan"`
+	OAuthProvider string 			`bson:"oauthProvider" 	 json:"oauthProvider"`
+	OAuthID       string 			`bson:"oauthId"       	 json:"-"`             
 	Avatar       string             `bson:"avatar"           json:"avatar"`
 	Bio          string             `bson:"bio"              json:"bio"`
 	IsVerified   bool               `bson:"isVerified"       json:"isVerified"`
