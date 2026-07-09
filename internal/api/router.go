@@ -14,10 +14,10 @@ func NewRouter() *gin.Engine {
 	r := gin.Default()
 
 	originsEnv := os.Getenv("ALLOWED_ORIGINS")
-    origins := []string{"http://localhost:3000"}
-    if originsEnv != "" {
-        origins = strings.Split(originsEnv, ",")
-    }
+	origins := []string{"http://localhost:3000"}
+	if originsEnv != "" {
+		origins = strings.Split(originsEnv, ",")
+	}
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     origins,
@@ -43,16 +43,15 @@ func NewRouter() *gin.Engine {
 		// Auth
 		auth := v1.Group("/auth")
 		{
-			auth.POST("/register", 	handlers.Register)
-			auth.POST("/login", 	handlers.Login)
+			auth.POST("/register", handlers.Register)
+			auth.POST("/login", handlers.Login)
 		}
 
 		// OAuth routes
-		auth.GET("/github",          handlers.GitHubRedirect)
+		auth.GET("/github", handlers.GitHubRedirect)
 		auth.GET("/github/callback", handlers.GitHubCallback)
-		auth.GET("/google",          handlers.GoogleRedirect)
+		auth.GET("/google", handlers.GoogleRedirect)
 		auth.GET("/google/callback", handlers.GoogleCallback)
-
 
 		// Marketplace
 		marketplace := v1.Group("/marketplace")
@@ -63,15 +62,24 @@ func NewRouter() *gin.Engine {
 		protected := v1.Group("/")
 		protected.Use(middleware.RequireAuth)
 		{
-            protected.GET("/me", func(c *gin.Context) {
-                c.JSON(200, gin.H{"data": gin.H{
-                    "userId":   c.GetString("userID"),
-                    "username": c.GetString("username"),
-                    "email":    c.GetString("email"),
-                    "plan":     c.GetString("plan"),
-                }})
-            })
-        }
+			protected.GET("/me", func(c *gin.Context) {
+				c.JSON(200, gin.H{"data": gin.H{
+					"userId":   c.GetString("userID"),
+					"username": c.GetString("username"),
+					"email":    c.GetString("email"),
+					"plan":     c.GetString("plan"),
+				}})
+			})
+			repos := protected.Group("/repositories")
+			{
+				repos.GET("", handlers.ListRepositories)
+				repos.POST("", handlers.CreateRepository)
+				repos.GET("/:name", handlers.GetRepository)
+				repos.PATCH("/:name", handlers.UpdateRepository)
+				repos.DELETE("/:name", handlers.DeleteRepository)
+				repos.PATCH("/:name/pin", handlers.PinRepository)
+			}
+		}
 	}
 	return r
 }
