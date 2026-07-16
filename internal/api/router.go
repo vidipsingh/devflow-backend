@@ -78,6 +78,12 @@ func NewRouter() *gin.Engine {
 				repos.PATCH("/:name", handlers.UpdateRepository)
 				repos.DELETE("/:name", handlers.DeleteRepository)
 				repos.PATCH("/:name/pin", handlers.PinRepository)
+				repos.GET("/:name/star", handlers.GetStarStatus)
+				repos.PATCH("/:name/star", handlers.StarRepository)
+				repos.POST("/:name/files", handlers.UploadFile)
+				repos.GET("/:name/tree", handlers.GetTree)
+				repos.GET("/:name/blob", handlers.GetBlob)
+				repos.GET("/:name/commits", handlers.GetCommits)
 			}
 		}
 	}

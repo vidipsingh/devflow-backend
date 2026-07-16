@@ -155,3 +155,56 @@ func PinRepository(c *gin.Context) {
 	}
 	response.OK(c, repo)
 }
+
+// GET /api/v1/repositories/:name/star
+// Returns { starred: bool, stars: int } for the calling user
+func GetStarStatus(c *gin.Context) {
+	callerID, ok := mustOwnerID(c)
+	if !ok {
+		return
+	}
+	starred, stars, err := service.GetStarStatus(c.Request.Context(), callerID, c.Param("name"))
+	if errors.Is(err, service.ErrRepoNotFound) {
+		response.NotFound(c, "repository not found")
+		return
+	}
+	if err != nil {
+		response.InternalError(c, "failed to get star status")
+		return
+	}
+	response.OK(c, gin.H{"starred": starred, "stars": stars})
+}
+
+// PATCH /api/v1/repositories/:name/star
+// Body: { "star": true|false }
+func StarRepository(c *gin.Context) {
+	callerID, ok := mustOwnerID(c)
+	if !ok {
+		return
+	}
+	var body struct {
+		Star bool `json:"star"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	repo, err := service.StarRepository(c.Request.Context(), callerID, c.Param("name"), body.Star)
+	if errors.Is(err, service.ErrRepoNotFound) {
+		response.NotFound(c, "repository not found")
+		return
+	}
+	if errors.Is(err, service.ErrAlreadyStarred) {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "error": "already starred"})
+		return
+	}
+	if errors.Is(err, service.ErrNotStarred) {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "error": "not starred"})
+		return
+	}
+	if err != nil {
+		response.InternalError(c, "failed to update star")
+		return
+	}
+	response.OK(c, repo)
+}

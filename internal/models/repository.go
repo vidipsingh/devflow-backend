@@ -32,29 +32,30 @@ type Collaborator struct {
 }
 
 type Repository struct {
-	ID            bson.ObjectID  `bson:"_id,omitempty" json:"id"`
-	Name          string         `bson:"name"          json:"name"`
-	Slug          string         `bson:"slug"          json:"slug"`
-	FullName      string         `bson:"fullName"      json:"fullName"`
-	Description   string         `bson:"description"   json:"description"`
-	OwnerID       bson.ObjectID  `bson:"ownerId"       json:"ownerId"`
-	OwnerType     string         `bson:"ownerType"     json:"ownerType"` // "user" | "org"
-	Visibility    string         `bson:"visibility"    json:"visibility"` // "public" | "private"
-	IsArchived    bool           `bson:"isArchived"    json:"isArchived"`
-	IsFork        bool           `bson:"isFork"        json:"isFork"`
-	IsPinned      bool           `bson:"isPinned"      json:"isPinned"`
-	ForkedFromID  *bson.ObjectID `bson:"forkedFromId"  json:"forkedFromId"`
-	Stats         RepoStats      `bson:"stats"         json:"stats"`
-	DefaultBranch string         `bson:"defaultBranch" json:"defaultBranch"`
-	Branches      []string       `bson:"branches"      json:"branches"`
-	Tags          []string       `bson:"tags"          json:"tags"`
-	Language      string         `bson:"language"      json:"language"`
-	Topics        []string       `bson:"topics"        json:"topics"`
-	Collaborators []Collaborator `bson:"collaborators" json:"collaborators"`
-	Settings      RepoSettings   `bson:"settings"      json:"settings"`
-	LastPushAt    *time.Time     `bson:"lastPushAt"    json:"lastPushAt"`
-	CreatedAt     time.Time      `bson:"createdAt"     json:"createdAt"`
-	UpdatedAt     time.Time      `bson:"updatedAt"     json:"updatedAt"`
+	ID            bson.ObjectID   `bson:"_id,omitempty" json:"id"`
+	Name          string          `bson:"name"          json:"name"`
+	Slug          string          `bson:"slug"          json:"slug"`
+	FullName      string          `bson:"fullName"      json:"fullName"`
+	Description   string          `bson:"description"   json:"description"`
+	OwnerID       bson.ObjectID   `bson:"ownerId"       json:"ownerId"`
+	OwnerType     string          `bson:"ownerType"     json:"ownerType"` // "user" | "org"
+	Visibility    string          `bson:"visibility"    json:"visibility"` // "public" | "private"
+	IsArchived    bool            `bson:"isArchived"    json:"isArchived"`
+	IsFork        bool            `bson:"isFork"        json:"isFork"`
+	IsPinned      bool            `bson:"isPinned"      json:"isPinned"`
+	ForkedFromID  *bson.ObjectID  `bson:"forkedFromId"  json:"forkedFromId"`
+	Stats         RepoStats       `bson:"stats"         json:"stats"`
+	StarredBy     []bson.ObjectID `bson:"starredBy"     json:"starredBy"` // user IDs who starred
+	DefaultBranch string          `bson:"defaultBranch" json:"defaultBranch"`
+	Branches      []string        `bson:"branches"      json:"branches"`
+	Tags          []string        `bson:"tags"          json:"tags"`
+	Language      string          `bson:"language"      json:"language"`
+	Topics        []string        `bson:"topics"        json:"topics"`
+	Collaborators []Collaborator  `bson:"collaborators" json:"collaborators"`
+	Settings      RepoSettings    `bson:"settings"      json:"settings"`
+	LastPushAt    *time.Time      `bson:"lastPushAt"    json:"lastPushAt"`
+	CreatedAt     time.Time       `bson:"createdAt"     json:"createdAt"`
+	UpdatedAt     time.Time       `bson:"updatedAt"     json:"updatedAt"`
 }
 
 type CreateRepoRequest struct {

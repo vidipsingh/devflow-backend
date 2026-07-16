@@ -15,9 +15,11 @@ import (
 )
 
 var (
-	ErrRepoNotFound  = errors.New("repository not found")
-	ErrRepoForbidden = errors.New("access denied")
-	ErrRepoDuplicate = errors.New("repository name already taken")
+	ErrRepoNotFound   = errors.New("repository not found")
+	ErrRepoForbidden  = errors.New("access denied")
+	ErrRepoDuplicate  = errors.New("repository name already taken")
+	ErrAlreadyStarred = errors.New("already starred")
+	ErrNotStarred     = errors.New("not starred")
 )
 
 var slugRe = regexp.MustCompile(`[^a-z0-9\-]`)
@@ -158,4 +160,69 @@ func PinRepository(ctx context.Context, ownerID bson.ObjectID, slug string, pinn
 		return nil, err
 	}
 	return repository.FindRepoByOwnerAndSlug(ctx, ownerID, slug)
+}
+
+// GetStarStatus returns whether the callerID has starred the repo identified by slug.
+func GetStarStatus(ctx context.Context, callerID bson.ObjectID, slug string) (bool, int, error) {
+	repo, err := repository.FindRepoBySlug(ctx, slug)
+	if err != nil {
+		return false, 0, err
+	}
+	if repo == nil {
+		return false, 0, ErrRepoNotFound
+	}
+	for _, id := range repo.StarredBy {
+		if id == callerID {
+			return true, repo.Stats.Stars, nil
+		}
+	}
+	return false, repo.Stats.Stars, nil
+}
+
+// StarRepository adds or removes callerID from the repo's starredBy list
+// (idempotent per-user — double-star is rejected with ErrAlreadyStarred).
+func StarRepository(ctx context.Context, callerID bson.ObjectID, slug string, star bool) (*models.Repository, error) {
+	repo, err := repository.FindRepoBySlug(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	if repo == nil {
+		return nil, ErrRepoNotFound
+	}
+
+	// Check current starred state for this user
+	alreadyStarred := false
+	for _, id := range repo.StarredBy {
+		if id == callerID {
+			alreadyStarred = true
+			break
+		}
+	}
+
+	if star && alreadyStarred {
+		return nil, ErrAlreadyStarred
+	}
+	if !star && !alreadyStarred {
+		return nil, ErrNotStarred
+	}
+
+	var update bson.M
+	if star {
+		update = bson.M{
+			"$addToSet": bson.M{"starredBy": callerID},
+			"$inc":      bson.M{"stats.stars": 1},
+			"$set":      bson.M{"updatedAt": time.Now()},
+		}
+	} else {
+		update = bson.M{
+			"$pull": bson.M{"starredBy": callerID},
+			"$inc":  bson.M{"stats.stars": -1},
+			"$set":  bson.M{"updatedAt": time.Now()},
+		}
+	}
+
+	if err := repository.UpdateRepoRaw(ctx, repo.ID, update); err != nil {
+		return nil, err
+	}
+	return repository.FindRepoBySlug(ctx, slug)
 }

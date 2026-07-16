@@ -35,6 +35,7 @@ func main() {
 		log.Fatalf("MongoDB connection failed: %v", err)
 	}
 	defer database.Disconnect()
+	database.ConnectRedis()
 
 	router := api.NewRouter()
 

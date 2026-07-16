@@ -84,3 +84,25 @@ func DeleteRepo(ctx context.Context, id bson.ObjectID) error {
 	_, err := repoCol().DeleteOne(timeout, bson.M{"_id": id})
 	return err
 }
+
+// FindRepoBySlug finds a repo by slug only (any owner) — used for starring
+func FindRepoBySlug(ctx context.Context, slug string) (*models.Repository, error) {
+	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var repo models.Repository
+	err := repoCol().FindOne(timeout, bson.M{"slug": slug}).Decode(&repo)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	return &repo, err
+}
+
+// UpdateRepoRaw applies an arbitrary MongoDB update document (supports $inc, $set, etc.)
+func UpdateRepoRaw(ctx context.Context, id bson.ObjectID, update bson.M) error {
+	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err := repoCol().UpdateOne(timeout, bson.M{"_id": id}, update)
+	return err
+}
