@@ -84,6 +84,20 @@ func NewRouter() *gin.Engine {
 				repos.GET("/:name/tree", handlers.GetTree)
 				repos.GET("/:name/blob", handlers.GetBlob)
 				repos.GET("/:name/commits", handlers.GetCommits)
+
+				// Issues
+				issues := repos.Group("/:name/issues")
+				{
+					issues.GET("", handlers.ListIssues)
+					issues.POST("", handlers.CreateIssue)
+					issues.GET("/:number", handlers.GetIssue)
+					issues.PATCH("/:number", handlers.UpdateIssue)
+					issues.DELETE("/:number", handlers.DeleteIssue)
+					issues.POST("/:number/comments", handlers.AddComment)
+					issues.PATCH("/:number/comments/:commentId", handlers.UpdateComment)
+					issues.DELETE("/:number/comments/:commentId", handlers.DeleteComment)
+					issues.POST("/:number/reactions", handlers.ReactToIssue)
+				}
 			}
 		}
 	}
