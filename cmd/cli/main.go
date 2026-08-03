@@ -49,6 +49,20 @@ func main() {
         commands.CatCmd,
         commands.CommitsCmd,
         commands.IssueCmd,
+        
+        commands.InitCmd,
+        commands.AddCmd,
+        commands.StatusCmd,
+        commands.CommitCmd,
+        commands.CheckoutCmd,
+        commands.BranchCmd,
+
+        commands.PrCmd,
+        commands.PushCmd2,
+        commands.PullCmd,
+        commands.LogCmd,
+        commands.StashCmd,
+        commands.UnstashCmd,
     )
 
     if err := root.Execute(); err != nil {

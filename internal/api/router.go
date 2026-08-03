@@ -98,6 +98,20 @@ func NewRouter() *gin.Engine {
 					issues.DELETE("/:number/comments/:commentId", handlers.DeleteComment)
 					issues.POST("/:number/reactions", handlers.ReactToIssue)
 				}
+
+				// Pull Requests
+				prs := repos.Group("/:name/pulls")
+				{
+					prs.GET("",               handlers.ListPRs)
+					prs.POST("",              handlers.CreatePR)
+					prs.GET("/:number",       handlers.GetPR)
+					prs.PATCH("/:number",     handlers.UpdatePR)
+					prs.DELETE("/:number",    handlers.DeletePR)
+					prs.POST("/:number/merge", handlers.MergePR)
+					prs.POST("/:number/comments",              handlers.AddPRComment)
+					prs.PATCH("/:number/comments/:commentId",  handlers.UpdatePRComment)
+					prs.DELETE("/:number/comments/:commentId", handlers.DeletePRComment)
+				}
 			}
 		}
 	}

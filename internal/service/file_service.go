@@ -28,7 +28,7 @@ func UploadFile(ctx context.Context, ownerID bson.ObjectID, ownerName string, re
 	// 1. Resolve repository
 	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, repoSlug)
 	if err != nil || repo == nil {
-		return nil, ErrFileNotFound
+		return nil, ErrRepoNotFound
 	}
 
 	branch := req.Branch
@@ -70,42 +70,42 @@ func UploadFile(ctx context.Context, ownerID bson.ObjectID, ownerName string, re
 	shortHash := commitID.Hex()[:7]
 
 	commit := &models.RepoCommit{
-        ID:         commitID,
-        RepoID:     repo.ID,
-        Branch:     branch,
-        Message:    commitMsg,
-        AuthorID:   ownerID,
-        AuthorName: ownerName,
-        ShortHash:  shortHash,
-        FilePaths:  []string{req.Path},
-        Additions:  len(strings.Split(string(rawContent), "\n")),
-        Deletions:  0,
-    }
+		ID:         commitID,
+		RepoID:     repo.ID,
+		Branch:     branch,
+		Message:    commitMsg,
+		AuthorID:   ownerID,
+		AuthorName: ownerName,
+		ShortHash:  shortHash,
+		FilePaths:  []string{req.Path},
+		Additions:  len(strings.Split(string(rawContent), "\n")),
+		Deletions:  0,
+	}
 	if err := repository.InsertCommit(ctx, commit); err != nil {
 		return nil, err
 	}
 
 	// 7. Upsert file metadata in repo_files
-    now := time.Now()
-    fileMeta := &models.RepoFile{
-        RepoID:      repo.ID,
-        Path:        req.Path,
-        Name:        path.Base(req.Path),
-        Dir:         path.Dir(req.Path),
-        Size:        int64(len(rawContent)),
-        MimeType:    mimeStr,
-        Encoding:    encoding,
-        SHA:         sha,
-        GridFSID:    gridFSID,
-        Branch:      branch,
-        CommitID:    commitID,
-        IsDirectory: false,
-        CreatedAt:   now,
-        UpdatedAt:   now,
-    }
-    if err := repository.UpsertFile(ctx, fileMeta); err != nil {
-        return nil, err
-    }
+	now := time.Now()
+	fileMeta := &models.RepoFile{
+		RepoID:      repo.ID,
+		Path:        req.Path,
+		Name:        path.Base(req.Path),
+		Dir:         path.Dir(req.Path),
+		Size:        int64(len(rawContent)),
+		MimeType:    mimeStr,
+		Encoding:    encoding,
+		SHA:         sha,
+		GridFSID:    gridFSID,
+		Branch:      branch,
+		CommitID:    commitID,
+		IsDirectory: false,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := repository.UpsertFile(ctx, fileMeta); err != nil {
+		return nil, err
+	}
 
 	// 8. Ensure all parent directories are recorded
 	if err := ensureDirectories(ctx, repo.ID, branch, req.Path, commitID, now); err != nil {
@@ -126,15 +126,15 @@ func ensureDirectories(ctx context.Context, repoID bson.ObjectID, branch, filePa
 	dir := path.Dir(filePath)
 	for dir != "." && dir != "/" && dir != "" {
 		dirMeta := &models.RepoFile{
-            RepoID:      repoID,
-            Path:        dir,
-            Name:        path.Base(dir),
-            Dir:         path.Dir(dir),
-            Branch:      branch,
-            CommitID:    commitID,
-            IsDirectory: true,
-            CreatedAt:   now,
-            UpdatedAt:   now,
+			RepoID:      repoID,
+			Path:        dir,
+			Name:        path.Base(dir),
+			Dir:         path.Dir(dir),
+			Branch:      branch,
+			CommitID:    commitID,
+			IsDirectory: true,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		}
 		if err := repository.UpsertFile(ctx, dirMeta); err != nil {
 			return err
@@ -180,11 +180,11 @@ func GetTree(ctx context.Context, ownerID bson.ObjectID, repoSlug, branch, dirPa
 	if len(commits) > 0 {
 		c := commits[0]
 		lastCommit = &models.CommitSummary{
-            Hash:    c.ShortHash,
-            Message: c.Message,
-            Author:  c.AuthorName,
-            Date:    c.CreatedAt,
-        }
+			Hash:    c.ShortHash,
+			Message: c.Message,
+			Author:  c.AuthorName,
+			Date:    c.CreatedAt,
+		}
 	}
 
 	entries := make([]models.FileTreeEntry, 0, len(files))
@@ -194,14 +194,14 @@ func GetTree(ctx context.Context, ownerID bson.ObjectID, repoSlug, branch, dirPa
 			t = "dir"
 		}
 		entries = append(entries, models.FileTreeEntry{
-            Name:       f.Name,
-            Path:       f.Path,
-            Type:       t,
-            Size:       f.Size,
-            MimeType:   f.MimeType,
-            SHA:        f.SHA,
-            LastCommit: lastCommit,
-        })
+			Name:       f.Name,
+			Path:       f.Path,
+			Type:       t,
+			Size:       f.Size,
+			MimeType:   f.MimeType,
+			SHA:        f.SHA,
+			LastCommit: lastCommit,
+		})
 	}
 
 	// Store in Redis

@@ -73,6 +73,15 @@ func InsertCommit(ctx context.Context, c *models.RepoCommit) error {
 	return err
 }
 
+func FindAllFilesByBranch(ctx context.Context, repoID bson.ObjectID, branch string) ([]models.RepoFile, error) {
+    cur, err := database.Collection("repo_files").Find(ctx, bson.M{
+        "repoId": repoID, "branch": branch, "isDirectory": false,
+    })
+    if err != nil { return nil, err }
+    var files []models.RepoFile
+    return files, cur.All(ctx, &files)
+}
+
 // FindCommitsByRepo returns recent commits for a repo/branch
 func FindCommitsByRepo(ctx context.Context, repoID bson.ObjectID, branch string, limit int64) ([]models.RepoCommit, error) {
 	coll := database.Collection(commitsCol)

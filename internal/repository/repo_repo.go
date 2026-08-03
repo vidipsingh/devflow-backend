@@ -98,6 +98,14 @@ func FindRepoBySlug(ctx context.Context, slug string) (*models.Repository, error
 	return &repo, err
 }
 
+func IncrementRepoStat(ctx context.Context, repoID bson.ObjectID, field string, delta int) error {
+    _, err := database.Collection("repositories").UpdateOne(ctx,
+        bson.M{"_id": repoID},
+        bson.M{"$inc": bson.M{"stats." + field: delta}},
+    )
+    return err
+}
+
 // UpdateRepoRaw applies an arbitrary MongoDB update document (supports $inc, $set, etc.)
 func UpdateRepoRaw(ctx context.Context, id bson.ObjectID, update bson.M) error {
 	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
