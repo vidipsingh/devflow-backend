@@ -98,3 +98,16 @@ func FindCommitsByRepo(ctx context.Context, repoID bson.ObjectID, branch string,
 	}
 	return commits, nil
 }
+
+func GetFileContent(ctx context.Context, repoID bson.ObjectID, branch, path string) (string, error) {
+    f, err := FindFileByPath(ctx, repoID, branch, path)
+    if err != nil {
+        return "", err
+    }
+
+	raw, err := database.GridFSDownload(ctx, f.GridFSID)
+    if err != nil {
+        return "", err
+    }
+    return string(raw), nil
+}

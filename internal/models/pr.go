@@ -35,6 +35,7 @@ type PullRequest struct {
 	CommentCount int             `bson:"commentCount"  json:"commentCount"`
 	Additions    int             `bson:"additions"     json:"additions"`
 	Deletions    int             `bson:"deletions"     json:"deletions"`
+	AIReview     *AIReview       `bson:"aiReview"      json:"aiReview"`
 	ChangedFiles []string        `bson:"changedFiles"  json:"changedFiles"`
 	IsDraft      bool            `bson:"isDraft"       json:"isDraft"`
 	IsMergeable  bool            `bson:"isMergeable"   json:"isMergeable"`

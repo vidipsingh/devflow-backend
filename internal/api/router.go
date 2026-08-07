@@ -111,6 +111,7 @@ func NewRouter() *gin.Engine {
 					prs.POST("/:number/comments",              handlers.AddPRComment)
 					prs.PATCH("/:number/comments/:commentId",  handlers.UpdatePRComment)
 					prs.DELETE("/:number/comments/:commentId", handlers.DeletePRComment)
+					prs.POST("/:number/ai-review", handlers.TriggerAIReview)
 				}
 			}
 		}

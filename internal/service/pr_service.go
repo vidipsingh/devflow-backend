@@ -91,6 +91,12 @@ func CreatePR(ctx context.Context, ownerID bson.ObjectID, ownerName, repoSlug st
 	}
 
 	_ = repository.IncrementRepoStat(ctx, repo.ID, "openPRs", 1)
+	// Fire async AI review
+	go func(prCopy *models.PullRequest, rid bson.ObjectID) {
+		gctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		ReviewPRAsync(gctx, prCopy, rid)
+	}(pr, repo.ID)
 	return pr, nil
 }
 

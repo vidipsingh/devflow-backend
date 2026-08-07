@@ -102,3 +102,14 @@ func DeletePRComment(ctx context.Context, prID bson.ObjectID, commentID bson.Obj
 	})
 	return err
 }
+
+func SetPRAIReview(ctx context.Context, prID bson.ObjectID, review *models.AIReview) error {
+	_, err := prCol().UpdateOne(ctx,
+			bson.M{"_id": prID},
+			bson.M{"$set": bson.M{
+			"aiReview": review,
+			"updatedAt": time.Now(),
+		}},
+	)
+	return err
+}
