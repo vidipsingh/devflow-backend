@@ -46,3 +46,13 @@ func RequireAuth(c *gin.Context) {
 
     c.Next()
 }
+
+func RequireAuthWS(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+		return
+	}
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	RequireAuth(c)
+}

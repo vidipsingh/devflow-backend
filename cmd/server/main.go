@@ -12,6 +12,8 @@ import (
 	"devflow-backend/internal/api"
 	"devflow-backend/internal/config"
 	"devflow-backend/internal/database"
+	"devflow-backend/internal/repository"
+	ws "devflow-backend/internal/websocket"
 
 	"github.com/joho/godotenv"
 )
@@ -36,6 +38,11 @@ func main() {
 	}
 	defer database.Disconnect()
 	database.ConnectRedis()
+
+	// Initialize WebSocket Hub
+	pairRepo := repository.NewPairRepo(database.GetDB())
+	ws.GlobalHub = ws.NewHub(pairRepo)
+	go ws.GlobalHub.Run()
 
 	router := api.NewRouter()
 

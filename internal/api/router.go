@@ -60,6 +60,8 @@ func NewRouter() *gin.Engine {
 		}
 
 		protected := v1.Group("/")
+		// WebSocket — auth via ?token= query param
+		v1.GET("/ws/pair/:sessionId", middleware.RequireAuthWS, handlers.PairSessionWS)
 		protected.Use(middleware.RequireAuth)
 		{
 			protected.GET("/me", func(c *gin.Context) {
@@ -112,6 +114,16 @@ func NewRouter() *gin.Engine {
 					prs.PATCH("/:number/comments/:commentId",  handlers.UpdatePRComment)
 					prs.DELETE("/:number/comments/:commentId", handlers.DeletePRComment)
 					prs.POST("/:number/ai-review", handlers.TriggerAIReview)
+				}
+
+				// Pair Programming Sessions
+				pairSessions := protected.Group("/pair-sessions")
+				{
+					pairSessions.POST("",                    handlers.CreatePairSession)
+					pairSessions.GET("",                     handlers.ListPairSessions)
+					pairSessions.GET("/:sessionId",          handlers.GetPairSession)
+					pairSessions.POST("/:sessionId/join",    handlers.JoinPairSession)
+					pairSessions.POST("/:sessionId/end",     handlers.EndPairSession)
 				}
 			}
 		}
