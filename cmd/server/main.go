@@ -44,6 +44,10 @@ func main() {
 	ws.GlobalHub = ws.NewHub(pairRepo)
 	go ws.GlobalHub.Run()
 
+	reviewRepo := repository.NewReviewRepo(database.GetDB())
+	ws.GlobalReviewHub = ws.NewReviewHub(reviewRepo)
+	go ws.GlobalReviewHub.Run()
+
 	router := api.NewRouter()
 
 	// HTTP server with timeouts

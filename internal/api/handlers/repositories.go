@@ -12,6 +12,17 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
+// GET /api/v1/public/repos?search=
+// Returns all public repositories (any owner) for discovery/cross-user access.
+func ListPublicRepositories(c *gin.Context) {
+	repos, err := service.ListPublicRepositories(c.Request.Context(), c.Query("search"))
+	if err != nil {
+		response.InternalError(c, "failed to fetch public repositories")
+		return
+	}
+	response.OK(c, gin.H{"repositories": repos, "total": len(repos)})
+}
+
 func mustOwnerID(c *gin.Context) (bson.ObjectID, bool) {
 	raw := c.GetString("userID")
 	id, err := bson.ObjectIDFromHex(raw)

@@ -13,16 +13,16 @@ import (
 )
 
 var (
-	ErrPRNotFound   = errors.New("pull request not found")
-	ErrPRForbidden  = errors.New("not authorized")
-	ErrPRDuplicate  = errors.New("PR already exists for this branch pair")
+	ErrPRNotFound     = errors.New("pull request not found")
+	ErrPRForbidden    = errors.New("not authorized")
+	ErrPRDuplicate    = errors.New("PR already exists for this branch pair")
 	ErrPRNotMergeable = errors.New("PR cannot be merged in current state")
 )
 
-func ListPRs(ctx context.Context, ownerID bson.ObjectID, repoSlug, state string) ([]models.PullRequest, error) {
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, repoSlug)
-	if err != nil || repo == nil {
-		return nil, ErrRepoNotFound
+func ListPRs(ctx context.Context, callerID bson.ObjectID, repoSlug, state string) ([]models.PullRequest, error) {
+	repo, err := ResolveRepo(ctx, callerID, repoSlug)
+	if err != nil {
+		return nil, err
 	}
 	return repository.FindPRsRepo(ctx, repo.ID, state)
 }
@@ -100,10 +100,10 @@ func CreatePR(ctx context.Context, ownerID bson.ObjectID, ownerName, repoSlug st
 	return pr, nil
 }
 
-func GetPR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, number int) (*models.PullRequest, error) {
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, repoSlug)
-	if err != nil || repo == nil {
-		return nil, ErrRepoNotFound
+func GetPR(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int) (*models.PullRequest, error) {
+	repo, err := ResolveRepo(ctx, callerID, repoSlug)
+	if err != nil {
+		return nil, err
 	}
 	pr, err := repository.FindPRByNumber(ctx, repo.ID, number)
 	if err != nil {
@@ -126,8 +126,12 @@ func UpdatePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, numbe
 	}
 
 	upd := bson.M{}
-	if req.Title != nil { upd["title"] = *req.Title }
-	if req.Body != nil { upd["body"] = *req.Body }
+	if req.Title != nil {
+		upd["title"] = *req.Title
+	}
+	if req.Body != nil {
+		upd["body"] = *req.Body
+	}
 	if req.State != nil {
 		upd["state"] = *req.State
 		if *req.State == "closed" {
@@ -136,8 +140,12 @@ func UpdatePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, numbe
 			_ = repository.IncrementRepoStat(ctx, repo.ID, "openPRs", -1)
 		}
 	}
-	if req.IsDraft != nil { upd["isDraft"] = *req.IsDraft }
-	if req.Labels != nil { upd["labels"] = req.Labels }
+	if req.IsDraft != nil {
+		upd["isDraft"] = *req.IsDraft
+	}
+	if req.Labels != nil {
+		upd["labels"] = req.Labels
+	}
 
 	if err := repository.UpdatePR(ctx, pr.ID, upd); err != nil {
 		return nil, err
@@ -175,21 +183,21 @@ func MergePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, number
 	mergeMsg := fmt.Sprintf("Merge pull requests %d from '%s' from %s into %s", pr.Number, pr.Title, pr.HeadBranch, pr.BaseBranch)
 	commitID := bson.NewObjectID()
 	commit := &models.RepoCommit{
-		ID:         commitID,
-		RepoID:     repo.ID,
-		Branch:     pr.BaseBranch,
-		Message:    mergeMsg,
-		AuthorID:   ownerID,
-		ShortHash:  commitID.Hex()[:7],
-		FilePaths:  pr.ChangedFiles,
-		Additions:  pr.Additions,
-		Deletions:  pr.Deletions,
+		ID:        commitID,
+		RepoID:    repo.ID,
+		Branch:    pr.BaseBranch,
+		Message:   mergeMsg,
+		AuthorID:  ownerID,
+		ShortHash: commitID.Hex()[:7],
+		FilePaths: pr.ChangedFiles,
+		Additions: pr.Additions,
+		Deletions: pr.Deletions,
 	}
 	_ = repository.InsertCommit(ctx, commit)
 
 	// Mark PR merged
 	_ = repository.UpdatePR(ctx, pr.ID, bson.M{
-		"state": "merged",
+		"state":    "merged",
 		"mergedAt": now,
 		"mergedBy": ownerID,
 	})
@@ -214,13 +222,13 @@ func DeletePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, numbe
 }
 
 func AddPRCommentDirect(ctx context.Context, prID bson.ObjectID, c models.PRComment) error {
-    return repository.AddPRComment(ctx, prID, c)
+	return repository.AddPRComment(ctx, prID, c)
 }
 
 func UpdatePRCommentDirect(ctx context.Context, prID, commentID bson.ObjectID, body string) error {
-    return repository.UpdatePRComment(ctx, prID, commentID, body)
+	return repository.UpdatePRComment(ctx, prID, commentID, body)
 }
 
 func DeletePRCommentDirect(ctx context.Context, prID, commentID bson.ObjectID) error {
-    return repository.DeletePRComment(ctx, prID, commentID)
+	return repository.DeletePRComment(ctx, prID, commentID)
 }

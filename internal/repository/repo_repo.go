@@ -98,6 +98,57 @@ func FindRepoBySlug(ctx context.Context, slug string) (*models.Repository, error
 	return &repo, err
 }
 
+// FindPublicRepoBySlug finds a public repo by slug (any owner) — used so non-owners
+// can read public repositories, PRs, and issues.
+func FindPublicRepoBySlug(ctx context.Context, slug string) (*models.Repository, error) {
+	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var repo models.Repository
+	err := repoCol().FindOne(timeout, bson.M{"slug": slug, "visibility": "public"}).Decode(&repo)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	return &repo, err
+}
+
+// FindRepoByID finds a repo by its ObjectID.
+func FindRepoByID(ctx context.Context, id bson.ObjectID) (*models.Repository, error) {
+	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var repo models.Repository
+	err := repoCol().FindOne(timeout, bson.M{"_id": id}).Decode(&repo)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	return &repo, err
+}
+
+// FindAllPublicRepos returns all public repos, optionally filtered by a search term in the slug/name.
+func FindAllPublicRepos(ctx context.Context, search string) ([]models.Repository, error) {
+	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	filter := bson.M{"visibility": "public"}
+	if search != "" {
+		filter["slug"] = bson.M{"$regex": search, "$options": "i"}
+	}
+
+	opts := options.Find().SetSort(bson.D{{Key: "stats.stars", Value: -1}}).SetLimit(50)
+	cursor, err := repoCol().Find(timeout, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(timeout)
+
+	var repos []models.Repository
+	if err := cursor.All(timeout, &repos); err != nil {
+		return nil, err
+	}
+	return repos, nil
+}
+
 func IncrementRepoStat(ctx context.Context, repoID bson.ObjectID, field string, delta int) error {
     _, err := database.Collection("repositories").UpdateOne(ctx,
         bson.M{"_id": repoID},

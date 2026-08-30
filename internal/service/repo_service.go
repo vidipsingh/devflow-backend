@@ -34,15 +34,46 @@ func ListRepositories(ctx context.Context, ownerID bson.ObjectID, visibility str
 	return repository.FindReposByOwner(ctx, ownerID, visibility)
 }
 
-func GetRepository(ctx context.Context, ownerID bson.ObjectID, slug string) (*models.Repository, error) {
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, slug)
+// ListPublicRepositories returns all public repos, optionally filtered by search term.
+func ListPublicRepositories(ctx context.Context, search string) ([]models.Repository, error) {
+	return repository.FindAllPublicRepos(ctx, search)
+}
+
+// ResolveRepo resolves a repository by slug for a given caller.
+// - If the caller owns a repo with that slug, that repo is returned (covers both public + private).
+// - Otherwise it falls back to finding any PUBLIC repo with that slug (cross-user access).
+// - Returns ErrRepoNotFound when no accessible repo exists.
+// - Returns ErrRepoForbidden when the repo exists but is private and owned by someone else.
+func ResolveRepo(ctx context.Context, callerID bson.ObjectID, slug string) (*models.Repository, error) {
+	// 1. Try caller-owned first (handles both private + public of the caller).
+	owned, err := repository.FindRepoByOwnerAndSlug(ctx, callerID, slug)
 	if err != nil {
 		return nil, err
 	}
-	if repo == nil {
-		return nil, ErrRepoNotFound
+	if owned != nil {
+		return owned, nil
 	}
-	return repo, nil
+	// 2. Fall back: look for a PUBLIC repo with this slug from any owner.
+	pub, err := repository.FindPublicRepoBySlug(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	if pub != nil {
+		return pub, nil
+	}
+	// 3. Check if there is a private repo (we just can't access it).
+	any, err := repository.FindRepoBySlug(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	if any != nil {
+		return nil, ErrRepoForbidden
+	}
+	return nil, ErrRepoNotFound
+}
+
+func GetRepository(ctx context.Context, callerID bson.ObjectID, slug string) (*models.Repository, error) {
+	return ResolveRepo(ctx, callerID, slug)
 }
 
 func CreateRepository(ctx context.Context, ownerID bson.ObjectID, ownerUsername string, req models.CreateRepoRequest) (*models.Repository, error) {

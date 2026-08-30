@@ -1,13 +1,17 @@
 package api
 
 import (
-	"devflow-backend/internal/api/handlers"
-	"devflow-backend/internal/api/middleware"
 	"os"
 	"strings"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+
+	"devflow-backend/internal/api/handlers"
+	"devflow-backend/internal/api/middleware"
+	"devflow-backend/internal/database"
+	"devflow-backend/internal/repository"
+	ws "devflow-backend/internal/websocket"
 )
 
 func NewRouter() *gin.Engine {
@@ -31,6 +35,9 @@ func NewRouter() *gin.Engine {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	reviewRepo := repository.NewReviewRepo(database.GetDB())
+	reviewHandler := handlers.NewReviewHandler(reviewRepo, ws.GlobalReviewHub)
+
 	v1 := r.Group("/api/v1")
 	{
 		// Public
@@ -38,6 +45,7 @@ func NewRouter() *gin.Engine {
 		{
 			public.GET("/stats", handlers.GetPlatformStats)
 			public.GET("/pricing", handlers.GetPricingPlans)
+			public.GET("/repos", handlers.ListPublicRepositories)
 		}
 
 		// Auth
@@ -59,9 +67,11 @@ func NewRouter() *gin.Engine {
 			marketplace.GET("/snippets", handlers.GetSnippets)
 		}
 
-		protected := v1.Group("/")
 		// WebSocket — auth via ?token= query param
 		v1.GET("/ws/pair/:sessionId", middleware.RequireAuthWS, handlers.PairSessionWS)
+		v1.GET("/ws/review/:sessionId", middleware.RequireAuthWS, reviewHandler.WebSocketSignaling)
+
+		protected := v1.Group("/")
 		protected.Use(middleware.RequireAuth)
 		{
 			protected.GET("/me", func(c *gin.Context) {
@@ -104,14 +114,14 @@ func NewRouter() *gin.Engine {
 				// Pull Requests
 				prs := repos.Group("/:name/pulls")
 				{
-					prs.GET("",               handlers.ListPRs)
-					prs.POST("",              handlers.CreatePR)
-					prs.GET("/:number",       handlers.GetPR)
-					prs.PATCH("/:number",     handlers.UpdatePR)
-					prs.DELETE("/:number",    handlers.DeletePR)
+					prs.GET("", handlers.ListPRs)
+					prs.POST("", handlers.CreatePR)
+					prs.GET("/:number", handlers.GetPR)
+					prs.PATCH("/:number", handlers.UpdatePR)
+					prs.DELETE("/:number", handlers.DeletePR)
 					prs.POST("/:number/merge", handlers.MergePR)
-					prs.POST("/:number/comments",              handlers.AddPRComment)
-					prs.PATCH("/:number/comments/:commentId",  handlers.UpdatePRComment)
+					prs.POST("/:number/comments", handlers.AddPRComment)
+					prs.PATCH("/:number/comments/:commentId", handlers.UpdatePRComment)
 					prs.DELETE("/:number/comments/:commentId", handlers.DeletePRComment)
 					prs.POST("/:number/ai-review", handlers.TriggerAIReview)
 				}
@@ -119,11 +129,20 @@ func NewRouter() *gin.Engine {
 				// Pair Programming Sessions
 				pairSessions := protected.Group("/pair-sessions")
 				{
-					pairSessions.POST("",                    handlers.CreatePairSession)
-					pairSessions.GET("",                     handlers.ListPairSessions)
-					pairSessions.GET("/:sessionId",          handlers.GetPairSession)
-					pairSessions.POST("/:sessionId/join",    handlers.JoinPairSession)
-					pairSessions.POST("/:sessionId/end",     handlers.EndPairSession)
+					pairSessions.POST("", handlers.CreatePairSession)
+					pairSessions.GET("", handlers.ListPairSessions)
+					pairSessions.GET("/:sessionId", handlers.GetPairSession)
+					pairSessions.POST("/:sessionId/join", handlers.JoinPairSession)
+					pairSessions.POST("/:sessionId/end", handlers.EndPairSession)
+				}
+
+				// Review Sessions (PR pair review + WebRTC signaling)
+				pr := protected.Group("/repos/:repoId/pulls/:prId")
+				{
+					pr.POST("/review-sessions", reviewHandler.CreateReviewSession)
+					pr.GET("/review-sessions", reviewHandler.ListReviewSessions)
+					pr.GET("/review-sessions/:sessionId", reviewHandler.GetReviewSession)
+					pr.POST("/review-sessions/:sessionId/end", reviewHandler.EndReviewSession)
 				}
 			}
 		}
