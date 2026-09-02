@@ -37,6 +37,7 @@ func NewRouter() *gin.Engine {
 
 	reviewRepo := repository.NewReviewRepo(database.GetDB())
 	reviewHandler := handlers.NewReviewHandler(reviewRepo, ws.GlobalReviewHub)
+	userRepo := repository.NewUserRepo(database.GetDB())
 
 	v1 := r.Group("/api/v1")
 	{
@@ -75,13 +76,19 @@ func NewRouter() *gin.Engine {
 		protected.Use(middleware.RequireAuth)
 		{
 			protected.GET("/me", func(c *gin.Context) {
-				c.JSON(200, gin.H{"data": gin.H{
-					"userId":   c.GetString("userID"),
-					"username": c.GetString("username"),
-					"email":    c.GetString("email"),
-					"plan":     c.GetString("plan"),
-				}})
-			})
+					userID := c.GetString("userID")
+					user, err := userRepo.FindByID(c.Request.Context(), userID)
+					if err != nil {
+						c.JSON(500, gin.H{"error": "failed to fetch user"})
+						return
+					}
+					c.JSON(200, gin.H{"data": gin.H{
+						"userId":   user.ID.Hex(),
+						"username": user.Username,
+						"email":    user.Email,
+						"plan":     user.Plan,
+					}})
+				})
 			repos := protected.Group("/repositories")
 			{
 				repos.GET("", handlers.ListRepositories)
@@ -143,6 +150,14 @@ func NewRouter() *gin.Engine {
 					pr.GET("/review-sessions", reviewHandler.ListReviewSessions)
 					pr.GET("/review-sessions/:sessionId", reviewHandler.GetReviewSession)
 					pr.POST("/review-sessions/:sessionId/end", reviewHandler.EndReviewSession)
+				}
+				
+				// Payments
+				payments := protected.Group("/payments")
+				{
+					payments.POST("/orders",  handlers.CreatePaymentOrder)
+					payments.POST("/verify",  handlers.VerifyPayment)
+					payments.GET("/history",  handlers.GetPaymentHistory)
 				}
 			}
 		}

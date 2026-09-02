@@ -11,6 +11,14 @@ import (
     "go.mongodb.org/mongo-driver/v2/mongo"
 )
 
+type UserRepo struct {
+	col *mongo.Collection
+}
+
+func NewUserRepo(db *mongo.Database) *UserRepo {
+	return &UserRepo{col: db.Collection("users")}
+}
+
 // FindUserByEmail looks up a user by email address
 // Returns nil, nil if not found (not an error)
 func FindUserByEmail(ctx context.Context, email string) (*models.User, error) {
@@ -90,5 +98,48 @@ func CreateUser(ctx context.Context, user *models.User) error {
 	}
 	
 	_, err := col.InsertOne(ctx, user)
+	return err
+}
+
+func (r *UserRepo) FindByID(ctx context.Context, id string) (*models.User, error) {
+	oid, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, err
+	}
+	var u models.User
+	err = r.col.FindOne(ctx, bson.M{"_id": oid}).Decode(&u)
+	return &u, err
+}
+
+// UpdatePlan upgrades the user's plan and subscription after a successful payment.
+func (r *UserRepo) UpdatePlan(ctx context.Context, userID, plan string) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	renewal := now.AddDate(0, 1, 0) // +30 days
+
+	// AI review limits per plan
+	reviewsLimit := 10
+	switch plan {
+	case "pro":
+		reviewsLimit = 50
+	case "team":
+		reviewsLimit = 999999
+	}
+
+	_, err = r.col.UpdateOne(ctx,
+		bson.M{"_id": oid},
+		bson.M{"$set": bson.M{
+			"plan":                      plan,
+			"subscription.plan":         plan,
+			"subscription.status":       "active",
+			"subscription.startDate":    now,
+			"subscription.renewalDate":  renewal,
+			"aiUsage.reviewsLimit":      reviewsLimit,
+			"updatedAt":                 now,
+		}},
+	)
 	return err
 }
