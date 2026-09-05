@@ -124,6 +124,7 @@ func NewRouter() *gin.Engine {
 					prs.GET("", handlers.ListPRs)
 					prs.POST("", handlers.CreatePR)
 					prs.GET("/:number", handlers.GetPR)
+					prs.GET("/:number/diff", handlers.GetPRDiff)
 					prs.PATCH("/:number", handlers.UpdatePR)
 					prs.DELETE("/:number", handlers.DeletePR)
 					prs.POST("/:number/merge", handlers.MergePR)
@@ -131,6 +132,7 @@ func NewRouter() *gin.Engine {
 					prs.PATCH("/:number/comments/:commentId", handlers.UpdatePRComment)
 					prs.DELETE("/:number/comments/:commentId", handlers.DeletePRComment)
 					prs.POST("/:number/ai-review", handlers.TriggerAIReview)
+					
 				}
 
 				// Pair Programming Sessions

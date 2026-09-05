@@ -69,6 +69,10 @@ func (c *Client) do(method, path string, body any) (map[string]any, error) {
 	}
 	if success, _ := result["success"].(bool); !success {
 		if errMsg, ok := result["error"].(string); ok {
+			// Give an actionable hint on auth failures
+			if resp.StatusCode == http.StatusUnauthorized {
+				return nil, fmt.Errorf("%s\nRun: devflow auth login", errMsg)
+			}
 			return nil, fmt.Errorf("%s", errMsg)
 		}
 		return nil, fmt.Errorf("server error (status %d)", resp.StatusCode)

@@ -97,10 +97,11 @@ Accepts a plain name or a URL from the DevFlow web UI:
 			}
 			filePath, _ := entry["path"].(string)
 
-			// 2. Fetch file content
+			// 2. Fetch file content as raw bytes (avoids JSON envelope)
 			url := cfg.Host + "/api/v1/repositories/" + name + "/blob?path=" + filePath
 			req, _ := http.NewRequest("GET", url, nil)
 			req.Header.Set("Authorization", "Bearer "+cfg.Token)
+			req.Header.Set("Accept", "application/octet-stream")
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				output.Warn(fmt.Sprintf("skipping %s: %v", filePath, err))

@@ -157,3 +157,20 @@ func DeletePRComment(c *gin.Context) {
 	}
 	response.OK(c, gin.H{"message": "comment deleted"})
 }
+
+// GET /repositories/:name/pulls/:number/diff
+func GetPRDiff(c *gin.Context) {
+	ownerID, ok := mustOwnerID(c)
+	if !ok { return }
+	num, _ := strconv.Atoi(c.Param("number"))
+	diff, err := service.GetPRDiff(c.Request.Context(), ownerID, c.Param("name"), num)
+	if errors.Is(err, service.ErrRepoNotFound) || errors.Is(err, service.ErrPRNotFound) {
+		response.NotFound(c, "pull request not found")
+		return
+	}
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, diff)
+}

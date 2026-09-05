@@ -76,3 +76,42 @@ type CreatePRCommentRequest struct {
 type UpdatePRCommentRequest struct {
 	Body string `json:"body" binding:"required,min=1"`
 }
+
+type DiffLineType string
+
+const (
+	DiffContext  DiffLineType = "context"
+	DiffAddition DiffLineType = "addition"
+	DiffDeletion DiffLineType = "deletion"
+)
+
+type DiffLine struct {
+	Type    DiffLineType `json:"type"`
+	Content string       `json:"content"`
+	OldNo   *int         `json:"oldNo"` // nil for additions
+	NewNo   *int         `json:"newNo"` // nil for deletions
+}
+
+type DiffHunk struct {
+	Header   string     `json:"header"`
+	OldStart int        `json:"oldStart"`
+	OldCount int        `json:"oldCount"`
+	NewStart int        `json:"newStart"`
+	NewCount int        `json:"newCount"`
+	Lines    []DiffLine `json:"lines"`
+}
+
+type FileDiff struct {
+	Path      string     `json:"path"`
+	Status    string     `json:"status"` // "added" | "removed" | "modified"
+	Additions int        `json:"additions"`
+	Deletions int        `json:"deletions"`
+	Hunks     []DiffHunk `json:"hunks"`
+	IsBinary  bool       `json:"isBinary"`
+}
+
+type PRDiffResponse struct {
+	Files     []FileDiff `json:"files"`
+	Additions int        `json:"additions"`
+	Deletions int        `json:"deletions"`
+}

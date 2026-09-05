@@ -15,33 +15,33 @@ import (
 
 // Errors
 var (
-	ErrEmailTaken = errors.New("email already registered")
+	ErrEmailTaken    = errors.New("email already registered")
 	ErrUsernameTaken = errors.New("username already taken")
-    ErrInvalidCreds  = errors.New("invalid email or password")
-    ErrUserNotFound  = errors.New("user not found")
+	ErrInvalidCreds  = errors.New("invalid email or password")
+	ErrUserNotFound  = errors.New("user not found")
 )
 
 // JWT Claims
 type Claims struct {
-    UserID   string `json:"userId"`
-    Username string `json:"username"`
-    Email    string `json:"email"`
-    Plan     string `json:"plan"`
-    jwt.RegisteredClaims
+	UserID   string `json:"userId"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Plan     string `json:"plan"`
+	jwt.RegisteredClaims
 }
 
 // Token Generation
 func generateToken(user *models.User) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
 	claims := Claims{
-		UserID: user.ID.Hex(),
+		UserID:   user.ID.Hex(),
 		Username: user.Username,
-		Email: user.Email,
-		Plan: user.Plan,
+		Email:    user.Email,
+		Plan:     user.Plan,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)), // 7 days
-            IssuedAt:  jwt.NewNumericDate(time.Now()),
-            Subject:   user.ID.Hex(),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour)), // 30 days
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Subject:   user.ID.Hex(),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -50,15 +50,15 @@ func generateToken(user *models.User) (string, error) {
 
 // Register
 type RegisterInput struct {
-    Name     string
-    Username string
-    Email    string
-    Password string
+	Name     string
+	Username string
+	Email    string
+	Password string
 }
 
 type AuthResult struct {
-    Token string
-    User  *models.User
+	Token string
+	User  *models.User
 }
 
 func Register(ctx context.Context, input RegisterInput) (*AuthResult, error) {
@@ -86,11 +86,11 @@ func Register(ctx context.Context, input RegisterInput) (*AuthResult, error) {
 	}
 
 	user := &models.User{
-        Name:         input.Name,
-        Username:     input.Username,
-        Email:        input.Email,
-        PasswordHash: string(hash),
-    }
+		Name:         input.Name,
+		Username:     input.Username,
+		Email:        input.Email,
+		PasswordHash: string(hash),
+	}
 	if err := repository.CreateUser(ctx, user); err != nil {
 		return nil, err
 	}

@@ -46,7 +46,22 @@ func FindPRsRepo(ctx context.Context, repoID bson.ObjectID, state string) ([]mod
 		return nil, err
 	}
 	var prs []models.PullRequest
-	return prs, cur.All(ctx, &prs)
+	if err := cur.All(ctx, &prs); err != nil {
+		return nil, err
+	}
+	// Normalize nil slices to empty slices so JSON encodes as [] not null
+	for i := range prs {
+		if prs[i].ChangedFiles == nil {
+			prs[i].ChangedFiles = []string{}
+		}
+		if prs[i].Comments == nil {
+			prs[i].Comments = []models.PRComment{}
+		}
+		if prs[i].Labels == nil {
+			prs[i].Labels = []models.IssueLabel{}
+		}
+	}
+	return prs, nil
 }
 
 func FindPRByNumber(ctx context.Context, repoID bson.ObjectID, number int) (*models.PullRequest, error) {
@@ -54,6 +69,16 @@ func FindPRByNumber(ctx context.Context, repoID bson.ObjectID, number int) (*mod
 	err := prCol().FindOne(ctx, bson.M{"repoId": repoID, "number": number}).Decode(&pr)
 	if err != nil {
 		return nil, err
+	}
+	// Ensure slices are never nil so JSON always encodes as [] not null
+	if pr.ChangedFiles == nil {
+		pr.ChangedFiles = []string{}
+	}
+	if pr.Comments == nil {
+		pr.Comments = []models.PRComment{}
+	}
+	if pr.Labels == nil {
+		pr.Labels = []models.IssueLabel{}
 	}
 	return &pr, nil
 }

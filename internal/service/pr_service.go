@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"devflow-backend/internal/git"
 	"devflow-backend/internal/models"
 	"devflow-backend/internal/repository"
 
@@ -231,4 +232,58 @@ func UpdatePRCommentDirect(ctx context.Context, prID, commentID bson.ObjectID, b
 
 func DeletePRCommentDirect(ctx context.Context, prID, commentID bson.ObjectID) error {
 	return repository.DeletePRComment(ctx, prID, commentID)
+}
+
+// GetPRDiff computes the unified diff for every changed file in a PR
+func GetPRDiff(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int) (*models.PRDiffResponse, error) {
+	repo, err := ResolveRepo(ctx, callerID, repoSlug)
+	if err != nil {
+		return nil, ErrRepoNotFound
+	}
+	pr, err := repository.FindPRByNumber(ctx, repo.ID, number)
+	if err != nil {
+		return nil, ErrPRNotFound
+	}
+
+	resp := &models.PRDiffResponse{}
+
+	for _, path := range pr.ChangedFiles {
+		baseContent, baseErr := repository.GetFileContent(ctx, repo.ID, pr.BaseBranch, path)
+		headContent, headErr := repository.GetFileContent(ctx, repo.ID, pr.HeadBranch, path)
+
+		status := "modified"
+		if baseErr != nil {
+			status = "added"
+			baseContent = ""
+		}
+		if headErr != nil {
+			status = "removed"
+			headContent = ""
+		}
+
+		hunks := git.ComputeDiff(baseContent, headContent, 3)
+
+		adds, dels := 0, 0
+		for _, h := range hunks {
+			for _, l := range h.Lines {
+				switch l.Type {
+				case models.DiffAddition:
+					adds++
+				case models.DiffDeletion:
+					dels++
+				}
+			}
+		}
+
+		resp.Files = append(resp.Files, models.FileDiff{
+			Path:      path,
+			Status:    status,
+			Additions: adds,
+			Deletions: dels,
+			Hunks:     hunks,
+		})
+		resp.Additions = adds
+		resp.Deletions = dels
+	}
+	return resp, nil
 }
