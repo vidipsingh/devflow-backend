@@ -2,10 +2,13 @@ package handlers
 
 import (
 	"errors"
+	"log"
 	"net/http"
+	"strings"
 
 	"devflow-backend/internal/api/response"
 	"devflow-backend/internal/models"
+	"devflow-backend/internal/repository"
 	"devflow-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -41,6 +44,7 @@ func ListRepositories(c *gin.Context) {
 	}
 	repos, err := service.ListRepositories(c.Request.Context(), ownerID, c.Query("visibility"))
 	if err != nil {
+		log.Printf("[ListRepositories] error fetching repos for owner %s: %v", ownerID.Hex(), err)
 		response.InternalError(c, "failed to fetch repositories")
 		return
 	}
@@ -62,7 +66,33 @@ func GetRepository(c *gin.Context) {
 		response.InternalError(c, "failed to fetch repository")
 		return
 	}
-	response.OK(c, repo)
+
+	// Build an enriched response that includes human-readable owner/fork fields.
+	type enrichedRepo struct {
+		*models.Repository
+		OwnerName        string `json:"ownerName"`
+		ForkedFromOwner  string `json:"forkedFromOwner,omitempty"`
+		ForkedFromSlug   string `json:"forkedFromSlug,omitempty"`
+	}
+
+	out := enrichedRepo{Repository: repo}
+
+	// ownerName: parse from FullName ("owner/repo") if available.
+	if parts := strings.SplitN(repo.FullName, "/", 2); len(parts) == 2 {
+		out.OwnerName = parts[0]
+	}
+
+	// If this repo is a fork, look up the upstream repo to get its slug + owner.
+	if repo.IsFork && repo.ForkedFromID != nil {
+		if upstream, uerr := repository.FindRepoByID(c.Request.Context(), *repo.ForkedFromID); uerr == nil && upstream != nil {
+			out.ForkedFromSlug = upstream.Slug
+			if upstreamParts := strings.SplitN(upstream.FullName, "/", 2); len(upstreamParts) == 2 {
+				out.ForkedFromOwner = upstreamParts[0]
+			}
+		}
+	}
+
+	response.OK(c, out)
 }
 
 // POST /api/v1/repositories
@@ -218,4 +248,47 @@ func StarRepository(c *gin.Context) {
 		return
 	}
 	response.OK(c, repo)
+}
+
+// POST /api/v1/repositories/:name/fork
+func ForkRepository(c *gin.Context) {
+    callerID, ok := mustOwnerID(c)
+    if !ok { 
+		return 
+	}
+    var req models.ForkRepoRequest
+    _ = c.ShouldBindJSON(&req) // optional body
+    fork, err := service.ForkRepository(
+        c.Request.Context(),
+        callerID,
+        c.GetString("username"),
+        c.Param("name"),
+        req,
+    )
+    if errors.Is(err, service.ErrRepoNotFound) {
+        response.NotFound(c, "repository not found"); return
+    }
+    if errors.Is(err, service.ErrAlreadyForked) {
+        response.BadRequest(c, "you already have a fork of this repository"); return
+    }
+    if err != nil {
+        response.InternalError(c, err.Error()); return
+    }
+    response.Created(c, fork)
+}
+
+// GET /api/v1/repositories/:name/forks
+func ListForks(c *gin.Context) {
+    callerID, ok := mustOwnerID(c)
+    if !ok { 
+		return 
+	}
+    forks, err := service.ListForks(c.Request.Context(), callerID, c.Param("name"))
+    if errors.Is(err, service.ErrRepoNotFound) {
+        response.NotFound(c, "repository not found"); return
+    }
+    if err != nil {
+        response.InternalError(c, err.Error()); return
+    }
+    response.OK(c, gin.H{"forks": forks, "total": len(forks)})
 }

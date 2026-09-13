@@ -17,24 +17,18 @@ var (
 )
 
 // ListIssues returns paginated issues for a repo (looked up by slug)
-func ListIssues(ctx context.Context, repoSlug, state string, page, limit int64) ([]models.Issue, int64, error) {
-	repo, err := repository.FindRepoBySlug(ctx, repoSlug)
+func ListIssues(ctx context.Context, callerID bson.ObjectID, repoSlug, state string, page, limit int64) ([]models.Issue, int64, error) {
+	repo, err := ResolveRepo(ctx, callerID, repoSlug)
 	if err != nil {
-		return nil, 0, err
-	}
-	if repo == nil {
 		return nil, 0, ErrRepoNotFound
 	}
 	return repository.FindIssueByRepo(ctx, repo.ID, state, page, limit)
 }
 
 // GetIssue returns a single issue by its sequential number within a repo
-func GetIssue(ctx context.Context, repoSlug string, number int) (*models.Issue, error) {
-	repo, err := repository.FindRepoBySlug(ctx, repoSlug)
+func GetIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int) (*models.Issue, error) {
+	repo, err := ResolveRepo(ctx, callerID, repoSlug)
 	if err != nil {
-		return nil, err
-	}
-	if repo == nil {
 		return nil, ErrRepoNotFound
 	}
 	issue, err := repository.FindIssueByNumber(ctx, repo.ID, number)
@@ -49,11 +43,8 @@ func GetIssue(ctx context.Context, repoSlug string, number int) (*models.Issue, 
 
 // CreateIssue creates a new issue in the repo
 func CreateIssue(ctx context.Context, callerID bson.ObjectID, callerUsername, repoSlug string, req models.CreateIssueRequest) (*models.Issue, error) {
-	repo, err := repository.FindRepoBySlug(ctx, repoSlug)
+	repo, err := ResolveRepo(ctx, callerID, repoSlug)
 	if err != nil {
-		return nil, err
-	}
-	if repo == nil {
 		return nil, ErrRepoNotFound
 	}
 
@@ -112,14 +103,14 @@ func CreateIssue(ctx context.Context, callerID bson.ObjectID, callerUsername, re
 
 // UpdateIssue edits any mutable field — only author or repo owner may do so
 func UpdateIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int, req models.UpdateIssueRequest) (*models.Issue, error) {
-	issue, err := GetIssue(ctx, repoSlug, number)
+	issue, err := GetIssue(ctx, callerID, repoSlug, number)
 	if err != nil {
 		return nil, err
 	}
 
-	repo, err := repository.FindRepoBySlug(ctx, repoSlug)
+	repo, err := ResolveRepo(ctx, callerID, repoSlug)
 	if err != nil {
-		return nil, err
+		return nil, ErrRepoNotFound
 	}
 
 	if issue.AuthorID != callerID && (repo == nil || repo.OwnerID != callerID) {
@@ -188,13 +179,13 @@ func UpdateIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, n
 
 // DeleteIssue hard-deletes — only author or repo owner can delete it
 func DeleteIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int) error {
-	issue, err := GetIssue(ctx, repoSlug, number)
+	issue, err := GetIssue(ctx, callerID, repoSlug, number)
 	if err != nil {
 		return err
 	}
-	repo, err := repository.FindRepoBySlug(ctx, repoSlug)
+	repo, err := ResolveRepo(ctx, callerID, repoSlug)
 	if err != nil {
-		return err
+		return ErrRepoNotFound
 	}
 	if issue.AuthorID != callerID && (repo == nil || repo.OwnerID != callerID) {
 		return ErrIssueForbidden
@@ -212,7 +203,7 @@ func DeleteIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, n
 
 // AddComment appends a new comment
 func AddComment(ctx context.Context, callerID bson.ObjectID, callerUsername, repoSlug string, number int, req models.CreateCommentRequest) (*models.Issue, error) {
-	issue, err := GetIssue(ctx , repoSlug, number)
+	issue, err := GetIssue(ctx, callerID, repoSlug, number)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +234,7 @@ func AddComment(ctx context.Context, callerID bson.ObjectID, callerUsername, rep
 
 // UpdateComment edits the body of a specific embedded comment
 func UpdateComment(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int, commentIDHex string, req models.UpdateCommentRequest) (*models.Issue, error) {
-	issue, err := GetIssue(ctx, repoSlug, number)
+	issue, err := GetIssue(ctx, callerID, repoSlug, number)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +277,7 @@ func UpdateComment(ctx context.Context, callerID bson.ObjectID, repoSlug string,
 
 // DeleteComment removes a comment from the embedded array
 func DeleteComment(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int, commentIDHex string) (*models.Issue, error) {
-	issue, err := GetIssue(ctx, repoSlug, number)
+	issue, err := GetIssue(ctx, callerID, repoSlug, number)
 	if err != nil {
 		return nil, err
 	}
@@ -323,8 +314,8 @@ func DeleteComment(ctx context.Context, callerID bson.ObjectID, repoSlug string,
 }
 
 // ReactToIssue increments or decrements a named reaction counter
-func ReactToIssue(ctx context.Context, repoSlug string, number int, req models.ReactRequest) (*models.Issue, error) {
-	issue, err := GetIssue(ctx, repoSlug, number)
+func ReactToIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int, req models.ReactRequest) (*models.Issue, error) {
+	issue, err := GetIssue(ctx, callerID, repoSlug, number)
 	if err != nil {
 		return nil, err
 	}

@@ -27,6 +27,8 @@ type PullRequest struct {
 	State        string          `bson:"state"         json:"state"` // "open"|"closed"|"merged"
 	HeadBranch   string          `bson:"headBranch"    json:"headBranch"`
 	BaseBranch   string          `bson:"baseBranch"    json:"baseBranch"`
+	HeadRepoID    *bson.ObjectID `bson:"headRepoId,omitempty"  json:"headRepoId,omitempty"`
+	HeadOwnerName string         `bson:"headOwnerName"          json:"headOwnerName"`
 	AuthorID     bson.ObjectID   `bson:"authorId"      json:"authorId"`
 	AuthorName   string          `bson:"authorName"    json:"authorName"`
 	ReviewerIDs  []bson.ObjectID `bson:"reviewerIds"   json:"reviewerIds"`
@@ -50,6 +52,7 @@ type CreatePRRequest struct {
 	Title      string       `json:"title"      binding:"required,min=1,max=256"`
 	Body       string       `json:"body"`
 	HeadBranch string       `json:"headBranch" binding:"required"`
+	HeadRepoID *string 		`json:"headRepoId"`
 	BaseBranch string       `json:"baseBranch" binding:"required"`
 	IsDraft    bool         `json:"isDraft"`
 	Labels     []IssueLabel `json:"labels"`

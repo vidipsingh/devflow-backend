@@ -20,6 +20,7 @@ var (
 	ErrRepoDuplicate  = errors.New("repository name already taken")
 	ErrAlreadyStarred = errors.New("already starred")
 	ErrNotStarred     = errors.New("not starred")
+	ErrAlreadyForked  = errors.New("you already have a fork of this repository")
 )
 
 var slugRe = regexp.MustCompile(`[^a-z0-9\-]`)
@@ -39,12 +40,33 @@ func ListPublicRepositories(ctx context.Context, search string) ([]models.Reposi
 	return repository.FindAllPublicRepos(ctx, search)
 }
 
-// ResolveRepo resolves a repository by slug for a given caller.
-// - If the caller owns a repo with that slug, that repo is returned (covers both public + private).
-// - Otherwise it falls back to finding any PUBLIC repo with that slug (cross-user access).
-// - Returns ErrRepoNotFound when no accessible repo exists.
-// - Returns ErrRepoForbidden when the repo exists but is private and owned by someone else.
+// ResolveRepo resolves a repository by "owner~slug" or plain "slug" for a given caller.
+//
+// "owner~slug" form (tilde separator, e.g. "alice~testrepo"):
+//   - Converts to fullName "alice/testrepo" and looks up by fullName field directly.
+//   - Returns the repo if caller owns it OR it is public; else ErrRepoForbidden.
+//
+// Plain "slug" form (backward-compat for existing owned-repo routes):
+//   - Tries caller-owned first, then falls back to any public repo.
 func ResolveRepo(ctx context.Context, callerID bson.ObjectID, slug string) (*models.Repository, error) {
+	// ── "owner~slug" form (tilde is URL-safe and never appears in slugs/usernames) ──
+	if strings.Contains(slug, "~") {
+		// Convert "alice~testrepo" → fullName "alice/testrepo"
+		fullName := strings.Replace(slug, "~", "/", 1)
+		repo, err := repository.FindRepoByFullName(ctx, fullName)
+		if err != nil {
+			return nil, err
+		}
+		if repo == nil {
+			return nil, ErrRepoNotFound
+		}
+		if repo.OwnerID == callerID || repo.Visibility == "public" {
+			return repo, nil
+		}
+		return nil, ErrRepoForbidden
+	}
+
+	// ── Plain slug form ───────────────────────────────────────────────────
 	// 1. Try caller-owned first (handles both private + public of the caller).
 	owned, err := repository.FindRepoByOwnerAndSlug(ctx, callerID, slug)
 	if err != nil {
@@ -68,6 +90,23 @@ func ResolveRepo(ctx context.Context, callerID bson.ObjectID, slug string) (*mod
 	}
 	if any != nil {
 		return nil, ErrRepoForbidden
+	}
+	// 4. Legacy-name fallback: repos created before slug enforcement may store
+	//    the original name (with underscores/uppercase) as slug. Try matching
+	//    by name field (case-insensitive) so old repos still resolve.
+	byName, err := repository.FindRepoByOwnerAndName(ctx, callerID, slug)
+	if err != nil {
+		return nil, err
+	}
+	if byName != nil {
+		return byName, nil
+	}
+	pubByName, err := repository.FindPublicRepoByName(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	if pubByName != nil {
+		return pubByName, nil
 	}
 	return nil, ErrRepoNotFound
 }
@@ -162,15 +201,16 @@ func UpdateRepository(ctx context.Context, ownerID bson.ObjectID, slug string, r
 }
 
 func DeleteRepository(ctx context.Context, ownerID bson.ObjectID, slug string) error {
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, slug)
+	repo, err := ResolveRepo(ctx, ownerID, slug)
 	if err != nil {
 		return err
 	}
-	if repo == nil {
-		return ErrRepoNotFound
-	}
 	if repo.OwnerID != ownerID {
 		return ErrRepoForbidden
+	}
+	// If this repo is a fork, decrement the upstream's fork count.
+	if repo.IsFork && repo.ForkedFromID != nil {
+		_ = repository.IncrementRepoStat(ctx, *repo.ForkedFromID, "forks", -1)
 	}
 	return repository.DeleteRepo(ctx, repo.ID)
 }
@@ -195,11 +235,8 @@ func PinRepository(ctx context.Context, ownerID bson.ObjectID, slug string, pinn
 
 // GetStarStatus returns whether the callerID has starred the repo identified by slug.
 func GetStarStatus(ctx context.Context, callerID bson.ObjectID, slug string) (bool, int, error) {
-	repo, err := repository.FindRepoBySlug(ctx, slug)
+	repo, err := ResolveRepo(ctx, callerID, slug)
 	if err != nil {
-		return false, 0, err
-	}
-	if repo == nil {
 		return false, 0, ErrRepoNotFound
 	}
 	for _, id := range repo.StarredBy {
@@ -213,11 +250,8 @@ func GetStarStatus(ctx context.Context, callerID bson.ObjectID, slug string) (bo
 // StarRepository adds or removes callerID from the repo's starredBy list
 // (idempotent per-user — double-star is rejected with ErrAlreadyStarred).
 func StarRepository(ctx context.Context, callerID bson.ObjectID, slug string, star bool) (*models.Repository, error) {
-	repo, err := repository.FindRepoBySlug(ctx, slug)
+	repo, err := ResolveRepo(ctx, callerID, slug)
 	if err != nil {
-		return nil, err
-	}
-	if repo == nil {
 		return nil, ErrRepoNotFound
 	}
 
@@ -256,4 +290,97 @@ func StarRepository(ctx context.Context, callerID bson.ObjectID, slug string, st
 		return nil, err
 	}
 	return repository.FindRepoBySlug(ctx, slug)
+}
+
+// HasMergeAccess returns true if callerID is the owner OR a write/admin collaborator
+func HasMergeAccess(callerID bson.ObjectID, repo *models.Repository) bool {
+	if repo.OwnerID == callerID {
+		return true
+	}
+	for _, c := range repo.Collaborators {
+		if c.UserID == callerID && (c.Role == "write" || c.Role == "admin") {
+			return true
+		}
+	}
+	return false
+}
+
+// ForkRepository creates a copy of the upstream repo owned by callerID, then
+// copies all files from upstream's default branch into the new fork.
+func ForkRepository(ctx context.Context, callerID bson.ObjectID, callerUsername, upstreamSlug string, req models.ForkRepoRequest) (*models.Repository, error) {
+	upstream, err := ResolveRepo(ctx, callerID, upstreamSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	// Choose fork name
+	forkName := req.Name
+	if forkName == "" {
+		forkName = upstream.Name
+	}
+	forkSlug := slugify(forkName)
+
+	existing, err := repository.FindRepoByOwnerAndSlug(ctx, callerID, forkSlug)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		if existing.IsFork && existing.ForkedFromID != nil && *existing.ForkedFromID == upstream.ID {
+			return nil, ErrAlreadyForked
+		}
+		forkSlug = forkSlug + "-fork"
+		forkName = forkName + "-fork"
+	}
+
+	now := time.Now()
+	fork := &models.Repository{
+		Name:          forkName,
+		Slug:          forkSlug,
+		FullName:      fmt.Sprintf("%s/%s", callerUsername, forkSlug),
+		Description:   upstream.Description,
+		OwnerID:       callerID,
+		OwnerType:     "user",
+		Visibility:    upstream.Visibility,
+		IsFork:        true,
+		ForkedFromID:  &upstream.ID,
+		DefaultBranch: upstream.DefaultBranch,
+		Branches:      upstream.Branches,
+		Tags:          []string{},
+		Topics:        upstream.Topics,
+		Language:      upstream.Language,
+		Collaborators: []models.Collaborator{},
+		Settings:      upstream.Settings,
+		Stats:         models.RepoStats{},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := repository.CreateRepo(ctx, fork); err != nil {
+		return nil, err
+	}
+
+	// Increment upstream fork count
+	_ = repository.IncrementRepoStat(ctx, upstream.ID, "forks", 1)
+
+	// Copy all files from upstream default branch into fork
+	files, err := repository.FindAllFilesByBranch(ctx, upstream.ID, upstream.DefaultBranch)
+	if err != nil {
+		return nil, err
+	}
+	for i := range files {
+		files[i].ID = bson.NewObjectID()
+		files[i].RepoID = fork.ID
+		files[i].UpdatedAt = now
+		_ = repository.UpsertFile(ctx, &files[i])
+	}
+
+	return fork, nil
+}
+
+// ListForks returns all repositories that were forked from the given upstream slug
+func ListForks(ctx context.Context, callerID bson.ObjectID, upstreamSlug string) ([]models.Repository, error) {
+	upstream, err := ResolveRepo(ctx, callerID, upstreamSlug)
+	if err != nil {
+		return nil, err
+	}
+	return repository.FindReposByForkedFrom(ctx, upstream.ID)
 }

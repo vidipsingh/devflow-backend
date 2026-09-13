@@ -29,9 +29,28 @@ func ListPRs(ctx context.Context, callerID bson.ObjectID, repoSlug, state string
 }
 
 func CreatePR(ctx context.Context, ownerID bson.ObjectID, ownerName, repoSlug string, req models.CreatePRRequest) (*models.PullRequest, error) {
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, repoSlug)
+	repo, err := ResolveRepo(ctx, ownerID, repoSlug)
 	if err != nil || repo == nil {
 		return nil, ErrRepoNotFound
+	}
+
+	// Resolve head repo
+	headRepo := repo
+	headOwnerName := ownerName
+	if req.HeadRepoID != nil && *req.HeadRepoID != "" {
+		headID, err := bson.ObjectIDFromHex(*req.HeadRepoID)
+		if err != nil {
+			return nil, errors.New("invalid headRepoId")
+		}
+		hr, err := repository.FindRepoByID(ctx, headID)
+		if err != nil || hr == nil {
+			return nil, errors.New("head repository not found")
+		}
+		headRepo = hr
+		// fetch head owner username
+		if u, err := repository.FindUserByIDRaw(context.Background(), hr.OwnerID.Hex()); err == nil && u != nil {
+			headOwnerName = u.Username
+		}
 	}
 
 	number, err := repository.NextPRNumber(ctx, repo.ID)
@@ -40,7 +59,7 @@ func CreatePR(ctx context.Context, ownerID bson.ObjectID, ownerName, repoSlug st
 	}
 
 	// Compute changed files by comparing commits on headBranch vs baseBranch
-	headCommits, _ := repository.FindCommitsByRepo(ctx, repo.ID, req.HeadBranch, 100)
+	headCommits, _ := repository.FindCommitsByRepo(ctx, headRepo.ID, req.HeadBranch, 100)
 	baseCommits, _ := repository.FindCommitsByRepo(ctx, repo.ID, req.BaseBranch, 100)
 
 	baseHashes := map[string]bool{}
@@ -68,23 +87,31 @@ func CreatePR(ctx context.Context, ownerID bson.ObjectID, ownerName, repoSlug st
 	}
 
 	pr := &models.PullRequest{
-		Number:       number,
-		RepoID:       repo.ID,
-		RepoSlug:     repoSlug,
-		Title:        req.Title,
-		Body:         req.Body,
-		State:        "open",
-		HeadBranch:   req.HeadBranch,
-		BaseBranch:   req.BaseBranch,
-		AuthorID:     ownerID,
-		AuthorName:   ownerName,
-		Labels:       req.Labels,
-		Comments:     []models.PRComment{},
-		IsDraft:      req.IsDraft,
-		IsMergeable:  true,
-		ChangedFiles: files,
-		Additions:    additions,
-		Deletions:    deletions,
+		Number:     number,
+		RepoID:     repo.ID,
+		RepoSlug:   repoSlug,
+		Title:      req.Title,
+		Body:       req.Body,
+		State:      "open",
+		HeadBranch: req.HeadBranch,
+		HeadRepoID: func() *bson.ObjectID {
+			if headRepo.ID != repo.ID {
+				id := headRepo.ID
+				return &id
+			}
+			return nil
+		}(),
+		HeadOwnerName: headOwnerName,
+		BaseBranch:    req.BaseBranch,
+		AuthorID:      ownerID,
+		AuthorName:    ownerName,
+		Labels:        req.Labels,
+		Comments:      []models.PRComment{},
+		IsDraft:       req.IsDraft,
+		IsMergeable:   true,
+		ChangedFiles:  files,
+		Additions:     additions,
+		Deletions:     deletions,
 	}
 
 	if err := repository.InsertPR(ctx, pr); err != nil {
@@ -114,7 +141,7 @@ func GetPR(ctx context.Context, callerID bson.ObjectID, repoSlug string, number 
 }
 
 func UpdatePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, number int, req models.UpdatePRRequest) (*models.PullRequest, error) {
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, repoSlug)
+	repo, err := ResolveRepo(ctx, ownerID, repoSlug)
 	if err != nil || repo == nil {
 		return nil, ErrRepoNotFound
 	}
@@ -154,11 +181,12 @@ func UpdatePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, numbe
 	return repository.FindPRByNumber(ctx, repo.ID, number)
 }
 
-func MergePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, number int, method string) (*models.PullRequest, error) {
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, repoSlug)
+func MergePR(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int, method string) (*models.PullRequest, error) {
+	repo, err := ResolveRepo(ctx, callerID, repoSlug)
 	if err != nil || repo == nil {
 		return nil, ErrRepoNotFound
 	}
+
 	pr, err := repository.FindPRByNumber(ctx, repo.ID, number)
 	if err != nil {
 		return nil, ErrPRNotFound
@@ -167,14 +195,26 @@ func MergePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, number
 		return nil, ErrPRNotMergeable
 	}
 
+	// Allow merge if caller is the base-repo owner/collaborator OR the PR author
+	// (the fork owner who opened the cross-repo PR).
+	if !HasMergeAccess(callerID, repo) && pr.AuthorID != callerID {
+		return nil, ErrPRForbidden
+	}
+
+	headRepoID := repo.ID
+	if pr.HeadRepoID != nil {
+		headRepoID = *pr.HeadRepoID
+	}
+
 	// Copy all files from headBranch to baseBranch
-	headFiles, err := repository.FindAllFilesByBranch(ctx, repo.ID, pr.HeadBranch)
+	headFiles, err := repository.FindAllFilesByBranch(ctx, headRepoID, pr.HeadBranch)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read head branch files: %w", err)
 	}
 
 	now := time.Now()
 	for i := range headFiles {
+		headFiles[i].RepoID = repo.ID
 		headFiles[i].Branch = pr.BaseBranch
 		headFiles[i].UpdatedAt = now
 		_ = repository.UpsertFile(ctx, &headFiles[i])
@@ -188,7 +228,7 @@ func MergePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, number
 		RepoID:    repo.ID,
 		Branch:    pr.BaseBranch,
 		Message:   mergeMsg,
-		AuthorID:  ownerID,
+		AuthorID:  callerID,
 		ShortHash: commitID.Hex()[:7],
 		FilePaths: pr.ChangedFiles,
 		Additions: pr.Additions,
@@ -200,7 +240,7 @@ func MergePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, number
 	_ = repository.UpdatePR(ctx, pr.ID, bson.M{
 		"state":    "merged",
 		"mergedAt": now,
-		"mergedBy": ownerID,
+		"mergedBy": callerID,
 	})
 	_ = repository.IncrementRepoStat(ctx, repo.ID, "openPRs", -1)
 
@@ -208,7 +248,7 @@ func MergePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, number
 }
 
 func DeletePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, number int) error {
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, repoSlug)
+	repo, err := ResolveRepo(ctx, ownerID, repoSlug)
 	if err != nil || repo == nil {
 		return ErrRepoNotFound
 	}
@@ -245,11 +285,16 @@ func GetPRDiff(ctx context.Context, callerID bson.ObjectID, repoSlug string, num
 		return nil, ErrPRNotFound
 	}
 
+	headRepoID := repo.ID
+	if pr.HeadRepoID != nil {
+		headRepoID = *pr.HeadRepoID
+	}
+
 	resp := &models.PRDiffResponse{}
 
 	for _, path := range pr.ChangedFiles {
 		baseContent, baseErr := repository.GetFileContent(ctx, repo.ID, pr.BaseBranch, path)
-		headContent, headErr := repository.GetFileContent(ctx, repo.ID, pr.HeadBranch, path)
+		headContent, headErr := repository.GetFileContent(ctx, headRepoID, pr.HeadBranch, path)
 
 		status := "modified"
 		if baseErr != nil {

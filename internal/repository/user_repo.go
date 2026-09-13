@@ -74,6 +74,25 @@ func FindUserByOAuth(ctx context.Context, provider, oauthID string) (*models.Use
 	return &user, nil
 }
 
+// FindUserByIDRaw fetches a user by its ObjectID hex string
+func FindUserByIDRaw(ctx context.Context, idHex string) (*models.User, error) {
+    id, err := bson.ObjectIDFromHex(idHex)
+    if err != nil {
+        return nil, err
+    }
+    col := database.Collection("users")
+    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+    defer cancel()
+    var user models.User
+    if err := col.FindOne(ctx, bson.M{"_id": id}).Decode(&user); err != nil {
+        if err == mongo.ErrNoDocuments {
+            return nil, nil
+        }
+        return nil, err
+    }
+    return &user, nil
+}
+
 func UpdateUser(ctx context.Context, user *models.User) error {
 	col := database.Collection("users")
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

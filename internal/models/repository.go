@@ -72,3 +72,7 @@ type UpdateRepoRequest struct {
 	Topics      []string      `json:"topics"`
 	Settings    *RepoSettings `json:"settings"`
 }
+
+type ForkRepoRequest struct {
+    Name string `json:"name"`
+}

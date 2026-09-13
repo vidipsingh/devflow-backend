@@ -35,7 +35,7 @@ func FindReposByOwner(ctx context.Context, ownerId bson.ObjectID, visibility str
 	defer cursor.Close(timeout)
 
 	var repos []models.Repository
-	if err := cursor.All(timeout, &repos); err != nil{
+	if err := cursor.All(timeout, &repos); err != nil {
 		return nil, err
 	}
 	return repos, nil
@@ -48,7 +48,7 @@ func FindRepoByOwnerAndSlug(ctx context.Context, ownerID bson.ObjectID, slug str
 
 	var repo models.Repository
 	err := repoCol().FindOne(timeout, bson.M{"ownerId": ownerID, "slug": slug}).Decode(&repo)
-	if errors.Is(err, mongo.ErrNoDocuments){
+	if errors.Is(err, mongo.ErrNoDocuments) {
 		return nil, nil
 	}
 	return &repo, err
@@ -150,11 +150,11 @@ func FindAllPublicRepos(ctx context.Context, search string) ([]models.Repository
 }
 
 func IncrementRepoStat(ctx context.Context, repoID bson.ObjectID, field string, delta int) error {
-    _, err := database.Collection("repositories").UpdateOne(ctx,
-        bson.M{"_id": repoID},
-        bson.M{"$inc": bson.M{"stats." + field: delta}},
-    )
-    return err
+	_, err := database.Collection("repositories").UpdateOne(ctx,
+		bson.M{"_id": repoID},
+		bson.M{"$inc": bson.M{"stats." + field: delta}},
+	)
+	return err
 }
 
 // UpdateRepoRaw applies an arbitrary MongoDB update document (supports $inc, $set, etc.)
@@ -164,4 +164,67 @@ func UpdateRepoRaw(ctx context.Context, id bson.ObjectID, update bson.M) error {
 
 	_, err := repoCol().UpdateOne(timeout, bson.M{"_id": id}, update)
 	return err
+}
+
+// FindRepoByOwnerAndName finds a repo by ownerId + name (case-insensitive) — legacy fallback
+// for repos created before slug enforcement where name may differ from slug.
+func FindRepoByOwnerAndName(ctx context.Context, ownerID bson.ObjectID, name string) (*models.Repository, error) {
+	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var repo models.Repository
+	err := repoCol().FindOne(timeout, bson.M{
+		"ownerId": ownerID,
+		"name":    bson.M{"$regex": "^" + name + "$", "$options": "i"},
+	}).Decode(&repo)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	return &repo, err
+}
+
+// FindPublicRepoByName finds a public repo by name (case-insensitive) from any owner.
+func FindPublicRepoByName(ctx context.Context, name string) (*models.Repository, error) {
+	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var repo models.Repository
+	err := repoCol().FindOne(timeout, bson.M{
+		"visibility": "public",
+		"name":       bson.M{"$regex": "^" + name + "$", "$options": "i"},
+	}).Decode(&repo)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	return &repo, err
+}
+
+// FindRepoByFullName finds a repo by its fullName field (e.g. "alice/testrepo")
+func FindRepoByFullName(ctx context.Context, fullName string) (*models.Repository, error) {
+	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var repo models.Repository
+	err := repoCol().FindOne(timeout, bson.M{"fullName": fullName}).Decode(&repo)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	return &repo, err
+}
+
+// FindReposByForkedFrom returns all forks of a given upstream repo ID
+func FindReposByForkedFrom(ctx context.Context, upstreamID bson.ObjectID) ([]models.Repository, error) {
+	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}})
+	cursor, err := repoCol().Find(timeout, bson.M{"forkedFromId": upstreamID}, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(timeout)
+	var repos []models.Repository
+	if err := cursor.All(timeout, &repos); err != nil {
+		return nil, err
+	}
+	return repos, nil
 }

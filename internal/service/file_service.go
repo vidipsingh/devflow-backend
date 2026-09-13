@@ -26,7 +26,7 @@ const blobCacheTTL = 120 * time.Second
 
 func UploadFile(ctx context.Context, ownerID bson.ObjectID, ownerName string, repoSlug string, req models.UploadFileRequest) (*models.RepoCommit, error) {
 	// 1. Resolve repository
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, repoSlug)
+	repo, err := ResolveRepo(ctx, ownerID, repoSlug)
 	if err != nil || repo == nil {
 		return nil, ErrRepoNotFound
 	}
@@ -146,8 +146,8 @@ func ensureDirectories(ctx context.Context, repoID bson.ObjectID, branch, filePa
 
 // GetTree returns the file listing for a given directory path in the repo
 func GetTree(ctx context.Context, ownerID bson.ObjectID, repoSlug, branch, dirPath string) ([]models.FileTreeEntry, error) {
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, repoSlug)
-	if err != nil || repo == nil {
+	repo, err := ResolveRepo(ctx, ownerID, repoSlug)
+	if err != nil {
 		return nil, ErrRepoNotFound
 	}
 	if branch == "" {
@@ -214,8 +214,8 @@ func GetTree(ctx context.Context, ownerID bson.ObjectID, repoSlug, branch, dirPa
 
 // GetBlob returns the raw file content for a given path
 func GetBlob(ctx context.Context, ownerID bson.ObjectID, repoSlug, branch, filePath string) ([]byte, *models.RepoFile, error) {
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, repoSlug)
-	if err != nil || repo == nil {
+	repo, err := ResolveRepo(ctx, ownerID, repoSlug)
+	if err != nil {
 		return nil, nil, ErrRepoNotFound
 	}
 	if branch == "" {
@@ -241,6 +241,11 @@ func GetBlob(ctx context.Context, ownerID bson.ObjectID, repoSlug, branch, fileP
 		return nil, nil, fmt.Errorf("gridfs download failed: %w", err)
 	}
 
+	// Legacy-data guard: if content is a JSON success envelope (from an old bug
+	// where the CLI stored the HTTP response body instead of raw file bytes),
+	// transparently unwrap the inner "content" field so the viewer shows source.
+	content = unwrapLegacyEnvelope(content)
+
 	// Only cache text files in Redis
 	if meta.Encoding == "utf-8" {
 		database.RedisSet(ctx, cacheKey, string(content), blobCacheTTL)
@@ -251,8 +256,8 @@ func GetBlob(ctx context.Context, ownerID bson.ObjectID, repoSlug, branch, fileP
 
 // GetCommits returns recent commits for a repo branch
 func GetCommits(ctx context.Context, ownerID bson.ObjectID, repoSlug, branch string, limit int64) ([]models.RepoCommit, error) {
-	repo, err := repository.FindRepoByOwnerAndSlug(ctx, ownerID, repoSlug)
-	if err != nil || repo == nil {
+	repo, err := ResolveRepo(ctx, ownerID, repoSlug)
+	if err != nil {
 		return nil, ErrRepoNotFound
 	}
 	if branch == "" {
@@ -262,4 +267,27 @@ func GetCommits(ctx context.Context, ownerID bson.ObjectID, repoSlug, branch str
 		limit = 20
 	}
 	return repository.FindCommitsByRepo(ctx, repo.ID, branch, limit)
+}
+
+// unwrapLegacyEnvelope detects files that were accidentally stored as the
+// full HTTP JSON success envelope ({"success":true,"data":{"content":"..."}})
+// instead of raw bytes, and returns the inner content field so the viewer
+// always displays source code rather than JSON.
+func unwrapLegacyEnvelope(raw []byte) []byte {
+	if len(raw) == 0 || raw[0] != '{' {
+		return raw
+	}
+	var envelope struct {
+		Success bool `json:"success"`
+		Data    *struct {
+			Content string `json:"content"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return raw
+	}
+	if !envelope.Success || envelope.Data == nil {
+		return raw
+	}
+	return []byte(envelope.Data.Content)
 }

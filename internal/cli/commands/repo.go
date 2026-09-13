@@ -115,8 +115,27 @@ var repoDeleteCmd = &cobra.Command{
 	},
 }
 
+var forkCmd = &cobra.Command{
+    Use:   "fork <repo-name-or-url>",
+    Short: "Fork a repository into your account",
+    Args:  cobra.ExactArgs(1),
+    RunE: func(cmd *cobra.Command, args []string) error {
+        name := extractRepoName(args[0])
+        c, err := client.New(true)
+        if err != nil { return err }
+        data, err := c.Post("/repositories/"+name+"/fork", map[string]any{})
+        if err != nil { return err }
+        m, _ := data.(map[string]any)
+        slug, _ := m["slug"].(string)
+        fullName, _ := m["fullName"].(string)
+        output.Success(fmt.Sprintf("Forked as '%s'", fullName))
+        output.Info("Clone it:  devflow clone " + slug)
+        return nil
+    },
+}
+
 func init() {
     repoCreateCmd.Flags().StringP("visibility", "v", "private", "public or private")
     repoCreateCmd.Flags().StringP("description", "d", "", "Repository description")
-    RepoCmd.AddCommand(repoListCmd, repoCreateCmd, repoViewCmd, repoDeleteCmd)
+    RepoCmd.AddCommand(repoListCmd, repoCreateCmd, repoViewCmd, repoDeleteCmd, forkCmd)
 }

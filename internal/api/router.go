@@ -103,6 +103,8 @@ func NewRouter() *gin.Engine {
 				repos.GET("/:name/tree", handlers.GetTree)
 				repos.GET("/:name/blob", handlers.GetBlob)
 				repos.GET("/:name/commits", handlers.GetCommits)
+				repos.POST("/:name/fork",  handlers.ForkRepository)
+				repos.GET("/:name/forks",  handlers.ListForks)
 
 				// Issues
 				issues := repos.Group("/:name/issues")

@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-
 // mustIssueNumber parses :number param as a positive integer
 func mustIssueNumber(c *gin.Context) (int, bool) {
 	n, err := strconv.Atoi(c.Param("number"))
@@ -25,17 +24,21 @@ func mustIssueNumber(c *gin.Context) (int, bool) {
 
 // GET /api/v1/repositories/:name/issues?state=open|closed&page=1&limit=20
 func ListIssues(c *gin.Context) {
+	callerID, ok := mustOwnerID(c)
+	if !ok {
+		return
+	}
 	state := c.DefaultQuery("state", "")
 	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
 	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 64)
-	if page < 1 { 
+	if page < 1 {
 		page = 1
 	}
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
 
-	issues, total, err :=  service.ListIssues(c.Request.Context(), c.Param("name"), state, page, limit)
+	issues, total, err := service.ListIssues(c.Request.Context(), callerID, c.Param("name"), state, page, limit)
 	if errors.Is(err, service.ErrRepoNotFound) {
 		response.NotFound(c, "repository not found")
 		return
@@ -53,11 +56,15 @@ func ListIssues(c *gin.Context) {
 
 // GET /api/v1/repositories/:name/issues/:number
 func GetIssue(c *gin.Context) {
-	number, ok := mustIssueNumber(c)
-	if !ok{
+	callerID, ok := mustOwnerID(c)
+	if !ok {
 		return
 	}
-	issue, err := service.GetIssue(c.Request.Context(), c.Param("name"), number)
+	number, ok := mustIssueNumber(c)
+	if !ok {
+		return
+	}
+	issue, err := service.GetIssue(c.Request.Context(), callerID, c.Param("name"), number)
 	if errors.Is(err, service.ErrRepoNotFound) || errors.Is(err, service.ErrIssueNotFound) {
 		response.NotFound(c, "issue not found")
 		return
@@ -191,7 +198,7 @@ func UpdateComment(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	issue, err := service.UpdateComment(c.Request.Context(), callerID, c.Param("name"), number,  c.Param("commentId"), req)
+	issue, err := service.UpdateComment(c.Request.Context(), callerID, c.Param("name"), number, c.Param("commentId"), req)
 	if errors.Is(err, service.ErrIssueNotFound) {
 		response.NotFound(c, "issue not found")
 		return
@@ -234,6 +241,10 @@ func DeleteComment(c *gin.Context) {
 }
 
 func ReactToIssue(c *gin.Context) {
+	callerID, ok := mustOwnerID(c)
+	if !ok {
+		return
+	}
 	number, ok := mustIssueNumber(c)
 	if !ok {
 		return
@@ -243,7 +254,7 @@ func ReactToIssue(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	issue, err := service.ReactToIssue(c.Request.Context(), c.Param("name"), number, req)
+	issue, err := service.ReactToIssue(c.Request.Context(), callerID, c.Param("name"), number, req)
 	if errors.Is(err, service.ErrIssueNotFound) {
 		response.NotFound(c, "issue not found")
 		return
