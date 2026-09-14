@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"devflow-backend/internal/database"
 	"devflow-backend/internal/git"
 	"devflow-backend/internal/models"
 	"devflow-backend/internal/repository"
@@ -20,12 +22,28 @@ var (
 	ErrPRNotMergeable = errors.New("PR cannot be merged in current state")
 )
 
+const prsCacheTTL = 2 * time.Minute
+
 func ListPRs(ctx context.Context, callerID bson.ObjectID, repoSlug, state string) ([]models.PullRequest, error) {
 	repo, err := ResolveRepo(ctx, callerID, repoSlug)
 	if err != nil {
 		return nil, err
 	}
-	return repository.FindPRsRepo(ctx, repo.ID, state)
+	cacheKey := fmt.Sprintf("prs:%s:%s", repo.ID.Hex(), state)
+	if cached, ok := database.RedisGet(ctx, cacheKey); ok {
+		var prs []models.PullRequest
+		if err := json.Unmarshal([]byte(cached), &prs); err == nil {
+			return prs, nil
+		}
+	}
+	prs, err := repository.FindPRsRepo(ctx, repo.ID, state)
+	if err != nil {
+		return nil, err
+	}
+	if data, err := json.Marshal(prs); err == nil {
+		database.RedisSet(ctx, cacheKey, string(data), prsCacheTTL)
+	}
+	return prs, nil
 }
 
 func CreatePR(ctx context.Context, ownerID bson.ObjectID, ownerName, repoSlug string, req models.CreatePRRequest) (*models.PullRequest, error) {
@@ -117,6 +135,7 @@ func CreatePR(ctx context.Context, ownerID bson.ObjectID, ownerName, repoSlug st
 	if err := repository.InsertPR(ctx, pr); err != nil {
 		return nil, err
 	}
+	database.RedisDelPattern(ctx, fmt.Sprintf("prs:%s:*", repo.ID.Hex()))
 
 	_ = repository.IncrementRepoStat(ctx, repo.ID, "openPRs", 1)
 	// Fire async AI review
@@ -178,6 +197,7 @@ func UpdatePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, numbe
 	if err := repository.UpdatePR(ctx, pr.ID, upd); err != nil {
 		return nil, err
 	}
+	database.RedisDelPattern(ctx, fmt.Sprintf("prs:%s:*", repo.ID.Hex()))
 	return repository.FindPRByNumber(ctx, repo.ID, number)
 }
 
@@ -243,6 +263,7 @@ func MergePR(ctx context.Context, callerID bson.ObjectID, repoSlug string, numbe
 		"mergedBy": callerID,
 	})
 	_ = repository.IncrementRepoStat(ctx, repo.ID, "openPRs", -1)
+	database.RedisDelPattern(ctx, fmt.Sprintf("prs:%s:*", repo.ID.Hex()))
 
 	return repository.FindPRByNumber(ctx, repo.ID, number)
 }
@@ -259,7 +280,11 @@ func DeletePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, numbe
 	if pr.AuthorID != ownerID {
 		return ErrPRForbidden
 	}
-	return repository.DeletePR(ctx, pr.ID)
+	if err := repository.DeletePR(ctx, pr.ID); err != nil {
+		return err
+	}
+	database.RedisDelPattern(ctx, fmt.Sprintf("prs:%s:*", repo.ID.Hex()))
+	return nil
 }
 
 func AddPRCommentDirect(ctx context.Context, prID bson.ObjectID, c models.PRComment) error {

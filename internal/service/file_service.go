@@ -112,11 +112,9 @@ func UploadFile(ctx context.Context, ownerID bson.ObjectID, ownerName string, re
 		return nil, err
 	}
 
-	// 9. Invalidate Redis cache for this repo/branch tree
-	cachePattern := fmt.Sprintf("tree:%s:%s:*", repo.ID.Hex(), branch)
-	database.RedisDelPattern(ctx, cachePattern)
-	blobKey := fmt.Sprintf("blob:%s:%s:*", repo.ID.Hex(), req.Path)
-	database.RedisDel(ctx, blobKey)
+	// 9. Invalidate Redis cache for this repo/branch tree and the specific blob
+	database.RedisDelPattern(ctx, fmt.Sprintf("tree:%s:%s:*", repo.ID.Hex(), branch))
+	database.RedisDelPattern(ctx, fmt.Sprintf("blob:%s:%s:%s", repo.ID.Hex(), branch, req.Path))
 
 	return commit, nil
 }

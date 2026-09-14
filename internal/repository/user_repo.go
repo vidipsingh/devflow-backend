@@ -2,14 +2,17 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"devflow-backend/internal/database"
-    "devflow-backend/internal/models"
+	"devflow-backend/internal/models"
 
-    "go.mongodb.org/mongo-driver/v2/bson"
-    "go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
+
+const userCacheTTL = 6 * time.Hour
 
 type UserRepo struct {
 	col *mongo.Collection
@@ -63,8 +66,8 @@ func FindUserByOAuth(ctx context.Context, provider, oauthID string) (*models.Use
 	var user models.User
 	err := col.FindOne(ctx, bson.M{
 		"oauthProvider": provider,
-        "oauthId":       oauthID,
-    }).Decode(&user)
+		"oauthId":       oauthID,
+	}).Decode(&user)
 	if err == mongo.ErrNoDocuments {
 		return nil, nil
 	}
@@ -76,21 +79,31 @@ func FindUserByOAuth(ctx context.Context, provider, oauthID string) (*models.Use
 
 // FindUserByIDRaw fetches a user by its ObjectID hex string
 func FindUserByIDRaw(ctx context.Context, idHex string) (*models.User, error) {
-    id, err := bson.ObjectIDFromHex(idHex)
-    if err != nil {
-        return nil, err
-    }
-    col := database.Collection("users")
-    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-    defer cancel()
-    var user models.User
-    if err := col.FindOne(ctx, bson.M{"_id": id}).Decode(&user); err != nil {
-        if err == mongo.ErrNoDocuments {
-            return nil, nil
-        }
-        return nil, err
-    }
-    return &user, nil
+	cacheKey := "user:" + idHex
+	if cached, ok := database.RedisGet(ctx, cacheKey); ok {
+		var u models.User
+		if err := json.Unmarshal([]byte(cached), &u); err == nil {
+			return &u, nil
+		}
+	}
+	id, err := bson.ObjectIDFromHex(idHex)
+	if err != nil {
+		return nil, err
+	}
+	col := database.Collection("users")
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var user models.User
+	if err := col.FindOne(ctx, bson.M{"_id": id}).Decode(&user); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if data, err := json.Marshal(&user); err == nil {
+		database.RedisSet(ctx, cacheKey, string(data), userCacheTTL)
+	}
+	return &user, nil
 }
 
 func UpdateUser(ctx context.Context, user *models.User) error {
@@ -100,6 +113,9 @@ func UpdateUser(ctx context.Context, user *models.User) error {
 
 	user.UpdatedAt = time.Now()
 	_, err := col.ReplaceOne(ctx, bson.M{"_id": user.ID}, user)
+	if err == nil {
+		database.RedisDel(ctx, "user:"+user.ID.Hex())
+	}
 	return err
 }
 
@@ -115,7 +131,7 @@ func CreateUser(ctx context.Context, user *models.User) error {
 	if user.Plan == "" {
 		user.Plan = "free"
 	}
-	
+
 	_, err := col.InsertOne(ctx, user)
 	return err
 }
@@ -151,14 +167,17 @@ func (r *UserRepo) UpdatePlan(ctx context.Context, userID, plan string) error {
 	_, err = r.col.UpdateOne(ctx,
 		bson.M{"_id": oid},
 		bson.M{"$set": bson.M{
-			"plan":                      plan,
-			"subscription.plan":         plan,
-			"subscription.status":       "active",
-			"subscription.startDate":    now,
-			"subscription.renewalDate":  renewal,
-			"aiUsage.reviewsLimit":      reviewsLimit,
-			"updatedAt":                 now,
+			"plan":                     plan,
+			"subscription.plan":        plan,
+			"subscription.status":      "active",
+			"subscription.startDate":   now,
+			"subscription.renewalDate": renewal,
+			"aiUsage.reviewsLimit":     reviewsLimit,
+			"updatedAt":                now,
 		}},
 	)
+	if err == nil {
+		database.RedisDel(ctx, "user:"+userID)
+	}
 	return err
 }

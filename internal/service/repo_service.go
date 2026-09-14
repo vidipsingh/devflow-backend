@@ -7,9 +7,11 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"encoding/json"
 
 	"devflow-backend/internal/models"
 	"devflow-backend/internal/repository"
+	"devflow-backend/internal/database"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -23,6 +25,11 @@ var (
 	ErrAlreadyForked  = errors.New("you already have a fork of this repository")
 )
 
+const (
+    repoCacheTTL  = 1 * time.Hour
+    reposCacheTTL = 5 * time.Minute
+)
+
 var slugRe = regexp.MustCompile(`[^a-z0-9\-]`)
 
 func slugify(name string) string {
@@ -32,7 +39,21 @@ func slugify(name string) string {
 }
 
 func ListRepositories(ctx context.Context, ownerID bson.ObjectID, visibility string) ([]models.Repository, error) {
-	return repository.FindReposByOwner(ctx, ownerID, visibility)
+	cacheKey := fmt.Sprintf("repos:%s:%s", ownerID.Hex(), visibility)
+    if cached, ok := database.RedisGet(ctx, cacheKey); ok {
+        var repos []models.Repository
+        if err := json.Unmarshal([]byte(cached), &repos); err == nil {
+            return repos, nil
+        }
+    }
+    repos, err := repository.FindReposByOwner(ctx, ownerID, visibility)
+    if err != nil {
+        return nil, err
+    }
+    if data, err := json.Marshal(repos); err == nil {
+        database.RedisSet(ctx, cacheKey, string(data), reposCacheTTL)
+    }
+    return repos, nil
 }
 
 // ListPublicRepositories returns all public repos, optionally filtered by search term.
@@ -112,7 +133,21 @@ func ResolveRepo(ctx context.Context, callerID bson.ObjectID, slug string) (*mod
 }
 
 func GetRepository(ctx context.Context, callerID bson.ObjectID, slug string) (*models.Repository, error) {
-	return ResolveRepo(ctx, callerID, slug)
+	cacheKey := fmt.Sprintf("repo:%s:%s", callerID.Hex(), slug)
+	if cached, ok := database.RedisGet(ctx, cacheKey); ok {
+		var repo models.Repository
+		if err := json.Unmarshal([]byte(cached), &repo); err == nil {
+			return &repo, nil
+		}
+	}
+	repo, err := ResolveRepo(ctx, callerID, slug)
+	if err != nil {
+		return nil, err
+	}
+	if data, err := json.Marshal(repo); err == nil {
+		database.RedisSet(ctx, cacheKey, string(data), repoCacheTTL)
+	}
+	return repo, nil
 }
 
 func CreateRepository(ctx context.Context, ownerID bson.ObjectID, ownerUsername string, req models.CreateRepoRequest) (*models.Repository, error) {
@@ -165,6 +200,7 @@ func CreateRepository(ctx context.Context, ownerID bson.ObjectID, ownerUsername 
 	if err := repository.CreateRepo(ctx, repo); err != nil {
 		return nil, err
 	}
+	database.RedisDelPattern(ctx, fmt.Sprintf("repos:%s:*", ownerID.Hex()))
 	return repo, nil
 }
 
@@ -197,6 +233,8 @@ func UpdateRepository(ctx context.Context, ownerID bson.ObjectID, slug string, r
 	if err := repository.UpdateRepo(ctx, repo.ID, update); err != nil {
 		return nil, err
 	}
+	database.RedisDel(ctx, fmt.Sprintf("repo:%s:%s", ownerID.Hex(), slug))
+	database.RedisDelPattern(ctx, fmt.Sprintf("repos:%s:*", ownerID.Hex()))
 	return repository.FindRepoByOwnerAndSlug(ctx, ownerID, slug)
 }
 
@@ -212,6 +250,8 @@ func DeleteRepository(ctx context.Context, ownerID bson.ObjectID, slug string) e
 	if repo.IsFork && repo.ForkedFromID != nil {
 		_ = repository.IncrementRepoStat(ctx, *repo.ForkedFromID, "forks", -1)
 	}
+	database.RedisDel(ctx, fmt.Sprintf("repo:%s:%s", ownerID.Hex(), slug))
+	database.RedisDelPattern(ctx, fmt.Sprintf("repos:%s:*", ownerID.Hex()))
 	return repository.DeleteRepo(ctx, repo.ID)
 }
 

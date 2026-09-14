@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
+	"devflow-backend/internal/database"
 	"devflow-backend/internal/models"
 	"devflow-backend/internal/repository"
 
@@ -16,13 +19,29 @@ var (
 	ErrIssueForbidden = errors.New("not authorized to modify this issue")
 )
 
+const issuesCacheTTL = 2 * time.Minute
+
 // ListIssues returns paginated issues for a repo (looked up by slug)
 func ListIssues(ctx context.Context, callerID bson.ObjectID, repoSlug, state string, page, limit int64) ([]models.Issue, int64, error) {
 	repo, err := ResolveRepo(ctx, callerID, repoSlug)
 	if err != nil {
 		return nil, 0, ErrRepoNotFound
 	}
-	return repository.FindIssueByRepo(ctx, repo.ID, state, page, limit)
+	cacheKey := fmt.Sprintf("issues:%s:%s:%d", repo.ID.Hex(), state, page)
+	if cached, ok := database.RedisGet(ctx, cacheKey); ok {
+		var issues []models.Issue
+		if err := json.Unmarshal([]byte(cached), &issues); err == nil {
+			return issues, int64(len(issues)), nil
+		}
+	}
+	issues, total, err := repository.FindIssueByRepo(ctx, repo.ID, state, page, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	if data, err := json.Marshal(issues); err == nil {
+		database.RedisSet(ctx, cacheKey, string(data), issuesCacheTTL)
+	}
+	return issues, total, nil
 }
 
 // GetIssue returns a single issue by its sequential number within a repo
@@ -91,6 +110,7 @@ func CreateIssue(ctx context.Context, callerID bson.ObjectID, callerUsername, re
 	if err := repository.CreateIssue(ctx, issue); err != nil {
 		return nil, err
 	}
+	database.RedisDelPattern(ctx, fmt.Sprintf("issues:%s:*", repo.ID.Hex()))
 
 	// Increment repo open issues counter
 	_ = repository.UpdateRepoRaw(ctx, repo.ID, bson.M{
@@ -167,6 +187,7 @@ func UpdateIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, n
 	if err := repository.UpdateIssueRaw(ctx, issue.ID, bson.M{"$set": set}); err != nil {
 		return nil, err
 	}
+	database.RedisDelPattern(ctx, fmt.Sprintf("issues:%s:*", repo.ID.Hex()))
 
 	if stateChanged && repo != nil {
 		_ = repository.UpdateRepoRaw(ctx, repo.ID, bson.M{
@@ -193,6 +214,7 @@ func DeleteIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, n
 	if err := repository.DeleteIssue(ctx, issue.ID); err != nil {
 		return err
 	}
+	database.RedisDelPattern(ctx, fmt.Sprintf("issues:%s:*", repo.ID.Hex()))
 	if issue.State == "open" && repo != nil {
 		_ = repository.UpdateRepoRaw(ctx, repo.ID, bson.M{
 			"$inc": bson.M{"stats.openIssues": -1},
