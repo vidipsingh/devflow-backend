@@ -12,6 +12,7 @@ import (
 	"devflow-backend/internal/models"
 	"devflow-backend/internal/repository"
 	"devflow-backend/internal/database"
+	"devflow-backend/internal/kafka"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -201,6 +202,13 @@ func CreateRepository(ctx context.Context, ownerID bson.ObjectID, ownerUsername 
 		return nil, err
 	}
 	database.RedisDelPattern(ctx, fmt.Sprintf("repos:%s:*", ownerID.Hex()))
+
+	kafka.Publish(ctx, kafka.TopicRepoEvents, kafka.RepoEvent{
+		Type: "repo.created", RepoID: repo.ID.Hex(),
+		RepoSlug: repo.Slug, FullName: repo.FullName,
+		OwnerID: ownerID.Hex(), ActorID: ownerID.Hex(),
+		ActorName: ownerUsername, Timestamp: time.Now(),
+	})
 	return repo, nil
 }
 
@@ -252,6 +260,17 @@ func DeleteRepository(ctx context.Context, ownerID bson.ObjectID, slug string) e
 	}
 	database.RedisDel(ctx, fmt.Sprintf("repo:%s:%s", ownerID.Hex(), slug))
 	database.RedisDelPattern(ctx, fmt.Sprintf("repos:%s:*", ownerID.Hex()))
+	
+	ownerName := ""
+	if u, err := repository.FindUserByIDRaw(ctx, ownerID.Hex()); err == nil && u != nil {
+		ownerName = u.Username
+	}
+	kafka.Publish(ctx, kafka.TopicRepoEvents, kafka.RepoEvent{
+		Type: "repo.deleted", RepoID: repo.ID.Hex(),
+		RepoSlug: repo.Slug, FullName: repo.FullName,
+		OwnerID: ownerID.Hex(), ActorID: ownerID.Hex(),
+		ActorName: ownerName, Timestamp: time.Now(),
+	})
 	return repository.DeleteRepo(ctx, repo.ID)
 }
 
@@ -397,6 +416,13 @@ func ForkRepository(ctx context.Context, callerID bson.ObjectID, callerUsername,
 	if err := repository.CreateRepo(ctx, fork); err != nil {
 		return nil, err
 	}
+	
+	kafka.Publish(ctx, kafka.TopicRepoEvents, kafka.RepoEvent{
+		Type: "repo.forked", RepoID: fork.ID.Hex(),
+		RepoSlug: fork.Slug, FullName: fork.FullName,
+		OwnerID: callerID.Hex(), ActorID: callerID.Hex(),
+		ActorName: callerUsername, Timestamp: time.Now(),
+	})
 
 	// Increment upstream fork count
 	_ = repository.IncrementRepoStat(ctx, upstream.ID, "forks", 1)

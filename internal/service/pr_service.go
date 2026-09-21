@@ -11,6 +11,7 @@ import (
 	"devflow-backend/internal/git"
 	"devflow-backend/internal/models"
 	"devflow-backend/internal/repository"
+	"devflow-backend/internal/kafka"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -136,6 +137,13 @@ func CreatePR(ctx context.Context, ownerID bson.ObjectID, ownerName, repoSlug st
 		return nil, err
 	}
 	database.RedisDelPattern(ctx, fmt.Sprintf("prs:%s:*", repo.ID.Hex()))
+
+	kafka.Publish(ctx, kafka.TopicPREvents, kafka.PREvent{
+		Type: "pr.created", PRNumber: pr.Number, PRTitle: pr.Title,
+		RepoID: repo.ID.Hex(), RepoSlug: repoSlug, FullName: repo.FullName,
+		AuthorID: ownerID.Hex(), AuthorName: ownerName,
+		ActorID: ownerID.Hex(), ActorName: ownerName, Timestamp: time.Now(),
+	})
 
 	_ = repository.IncrementRepoStat(ctx, repo.ID, "openPRs", 1)
 	// Fire async AI review
@@ -264,6 +272,18 @@ func MergePR(ctx context.Context, callerID bson.ObjectID, repoSlug string, numbe
 	})
 	_ = repository.IncrementRepoStat(ctx, repo.ID, "openPRs", -1)
 	database.RedisDelPattern(ctx, fmt.Sprintf("prs:%s:*", repo.ID.Hex()))
+
+	callerName := ""
+	if u, err := repository.FindUserByIDRaw(ctx, callerID.Hex()); err == nil && u != nil {
+		callerName = u.Username
+	}
+	kafka.Publish(ctx, kafka.TopicPREvents, kafka.PREvent{
+		Type: "pr.merged", PRNumber: pr.Number, PRTitle: pr.Title,
+		RepoID: repo.ID.Hex(), RepoSlug: repoSlug, FullName: repo.FullName,
+		AuthorID: pr.AuthorID.Hex(), AuthorName: pr.AuthorName,
+		ActorID: callerID.Hex(), ActorName: callerName,
+		Timestamp: time.Now(),
+	})
 
 	return repository.FindPRByNumber(ctx, repo.ID, number)
 }

@@ -14,6 +14,7 @@ import (
 	"devflow-backend/internal/database"
 	"devflow-backend/internal/models"
 	"devflow-backend/internal/repository"
+	"devflow-backend/internal/kafka"
 
 	"github.com/gabriel-vasile/mimetype"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -115,6 +116,13 @@ func UploadFile(ctx context.Context, ownerID bson.ObjectID, ownerName string, re
 	// 9. Invalidate Redis cache for this repo/branch tree and the specific blob
 	database.RedisDelPattern(ctx, fmt.Sprintf("tree:%s:%s:*", repo.ID.Hex(), branch))
 	database.RedisDelPattern(ctx, fmt.Sprintf("blob:%s:%s:%s", repo.ID.Hex(), branch, req.Path))
+
+	kafka.Publish(ctx, kafka.TopicFileEvents, kafka.FileEvent{
+		Type: "file.uploaded", RepoID: repo.ID.Hex(),
+		Branch: branch, Path: req.Path,
+		ActorID: ownerID.Hex(), ActorName: ownerName,
+		Timestamp: time.Now(),
+	})
 
 	return commit, nil
 }

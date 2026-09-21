@@ -1,0 +1,44 @@
+services:
+  # ─── Kafka Broker ────────────────────────────────────────────────────────────
+  - type: web
+    name: devflow-kafka
+    runtime: docker
+    dockerfilePath: ./devflow-backend/kafka.Dockerfile
+    plan: starter
+    disk:
+      name: kafka-data
+      mountPath: /bitnami/kafka
+      sizeGB: 5
+    envVars:
+      - key: KAFKA_CFG_NODE_ID
+        value: "1"
+      - key: KAFKA_CFG_PROCESS_ROLES
+        value: broker,controller
+      - key: KAFKA_CFG_LISTENERS
+        value: PLAINTEXT://:9092,CONTROLLER://:9093
+      - key: KAFKA_CFG_ADVERTISED_LISTENERS
+        value: PLAINTEXT://0.0.0.0:9092
+      - key: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+        value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - key: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS
+        value: 1@localhost:9093
+      - key: KAFKA_CFG_CONTROLLER_LISTENER_NAMES
+        value: CONTROLLER
+      - key: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
+        value: "true"
+
+  # ─── Go API Backend ──────────────────────────────────────────────────────────
+  - type: web
+    name: devflow-backend
+    runtime: docker
+    dockerfilePath: ./devflow-backend/Dockerfile
+    plan: starter
+    envVars:
+      - key: KAFKA_BROKERS
+        value: devflow-kafka:9092
+      - key: MONGODB_URI
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false

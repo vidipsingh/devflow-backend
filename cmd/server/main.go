@@ -13,6 +13,8 @@ import (
 	"devflow-backend/internal/config"
 	"devflow-backend/internal/database"
 	"devflow-backend/internal/repository"
+	"devflow-backend/internal/kafka"
+    "devflow-backend/internal/kafka/workers"
 	ws "devflow-backend/internal/websocket"
 
 	"github.com/joho/godotenv"
@@ -38,15 +40,20 @@ func main() {
 	}
 	defer database.Disconnect()
 	database.ConnectRedis()
+	kafka.Init()
+	defer kafka.Close()
 
 	// Initialize WebSocket Hub
 	pairRepo := repository.NewPairRepo(database.GetDB())
 	ws.GlobalHub = ws.NewHub(pairRepo)
 	go ws.GlobalHub.Run()
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	defer rootCancel()
 
 	reviewRepo := repository.NewReviewRepo(database.GetDB())
 	ws.GlobalReviewHub = ws.NewReviewHub(reviewRepo)
 	go ws.GlobalReviewHub.Run()
+	workers.StartActivityWorker(rootCtx)
 
 	router := api.NewRouter()
 

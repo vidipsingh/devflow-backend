@@ -10,6 +10,7 @@ import (
 	"devflow-backend/internal/database"
 	"devflow-backend/internal/models"
 	"devflow-backend/internal/repository"
+	"devflow-backend/internal/kafka"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -112,6 +113,14 @@ func CreateIssue(ctx context.Context, callerID bson.ObjectID, callerUsername, re
 	}
 	database.RedisDelPattern(ctx, fmt.Sprintf("issues:%s:*", repo.ID.Hex()))
 
+	kafka.Publish(ctx, kafka.TopicIssueEvents, kafka.IssueEvent{
+		Type: "issue.created", IssueNumber: issue.Number, IssueTitle: issue.Title,
+		RepoID: repo.ID.Hex(), RepoSlug: repoSlug, FullName: "",
+		AuthorID: callerID.Hex(), AuthorName: callerUsername,
+		ActorID: callerID.Hex(), Timestamp: time.Now(),
+	})
+
+
 	// Increment repo open issues counter
 	_ = repository.UpdateRepoRaw(ctx, repo.ID, bson.M{
 		"$inc": bson.M{"stats.openIssues": 1},
@@ -150,6 +159,13 @@ func UpdateIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, n
 			set["closedAt"] = now
 			set["closedBy"] = callerID
 			stateDelta = -1
+
+			kafka.Publish(ctx, kafka.TopicIssueEvents, kafka.IssueEvent{
+				Type: "issue.closed", IssueNumber: issue.Number, IssueTitle: issue.Title,
+				RepoID: repo.ID.Hex(), RepoSlug: repoSlug,
+				AuthorID: issue.AuthorID.Hex(), AuthorName: issue.AuthorName,
+				ActorID: callerID.Hex(), Timestamp: time.Now(),
+			})
 		} else {
 			set["closedAt"] = nil
 			set["closedBy"] = nil
