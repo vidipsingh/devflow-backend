@@ -228,3 +228,12 @@ func FindReposByForkedFrom(ctx context.Context, upstreamID bson.ObjectID) ([]mod
 	}
 	return repos, nil
 }
+
+// FindRepoByID_Hex looks up a repository by its ObjectID hex string.
+func FindRepoByID_Hex(ctx context.Context, repoIDHex string) (*models.Repository, error) {
+    oid, err := bson.ObjectIDFromHex(repoIDHex)
+    if err != nil {
+        return nil, err
+    }
+    return FindRepoByID(ctx, oid)
+}

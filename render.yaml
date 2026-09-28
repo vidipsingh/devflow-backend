@@ -1,5 +1,4 @@
 services:
-  # ─── Kafka Broker ────────────────────────────────────────────────────────────
   - type: web
     name: devflow-kafka
     runtime: docker
@@ -27,7 +26,6 @@ services:
       - key: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
         value: "true"
 
-  # ─── Go API Backend ──────────────────────────────────────────────────────────
   - type: web
     name: devflow-backend
     runtime: docker

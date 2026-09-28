@@ -54,6 +54,7 @@ func main() {
 	ws.GlobalReviewHub = ws.NewReviewHub(reviewRepo)
 	go ws.GlobalReviewHub.Run()
 	workers.StartActivityWorker(rootCtx)
+	workers.StartNotificationWorker(rootCtx)
 
 	router := api.NewRouter()
 

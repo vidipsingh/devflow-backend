@@ -15,7 +15,7 @@ func TriggerAIReview(c *gin.Context) {
 	}
 	num, _ := strconv.Atoi(c.Param("number"))
 	if err := service.TriggerReview(c.Request.Context(), ownerID, c.Param("name"), num); err != nil {
-		response.NotFound(c, "pull request nto found")
+		response.NotFound(c, "pull request not found")
 		return
 	}
 	response.OK(c, gin.H{"message": "AI Review triggered"})

@@ -120,6 +120,15 @@ func NewRouter() *gin.Engine {
 					issues.POST("/:number/reactions", handlers.ReactToIssue)
 				}
 
+				// Notifications
+				notifs := protected.Group("/notifications")
+				{
+					notifs.GET("",                      handlers.ListNotifications)
+					notifs.GET("/unread-count",         handlers.GetUnreadCount)
+					notifs.PATCH("/read-all",           handlers.MarkAllRead)
+					notifs.PATCH("/:notifId/read",      handlers.MarkOneRead)
+				}
+
 				// Pull Requests
 				prs := repos.Group("/:name/pulls")
 				{
