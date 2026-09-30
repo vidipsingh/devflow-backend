@@ -65,7 +65,9 @@ func NewRouter() *gin.Engine {
 		// Marketplace
 		marketplace := v1.Group("/marketplace")
 		{
-			marketplace.GET("/snippets", handlers.GetSnippets)
+			marketplace.GET("/snippets",              handlers.GetSnippets)
+			marketplace.GET("/snippets/:snippetId",   handlers.GetSnippet)
+			marketplace.GET("/snippets/:snippetId/reviews", handlers.GetSnippetReviews)
 		}
 
 		// WebSocket — auth via ?token= query param
@@ -171,6 +173,24 @@ func NewRouter() *gin.Engine {
 					payments.POST("/orders",  handlers.CreatePaymentOrder)
 					payments.POST("/verify",  handlers.VerifyPayment)
 					payments.GET("/history",  handlers.GetPaymentHistory)
+				}
+
+				// Marketplace
+				mp := protected.Group("/marketplace")
+				{
+					mp.GET("/my-snippets",  handlers.GetMySnippets)
+					mp.GET("/purchases",    handlers.GetMyPurchases)
+
+					mp.POST("/snippets",                               handlers.CreateSnippet)
+					mp.PATCH("/snippets/:snippetId",                   handlers.UpdateSnippet)
+					mp.DELETE("/snippets/:snippetId",                  handlers.DeleteSnippet)
+					mp.PATCH("/snippets/:snippetId/publish",           handlers.PublishSnippet)
+					mp.GET("/snippets/:snippetId/download",            handlers.DownloadSnippet)
+
+					mp.POST("/snippets/:snippetId/purchase/order",     handlers.CreatePurchaseOrder)
+					mp.POST("/snippets/:snippetId/purchase/verify",    handlers.VerifyPurchase)
+
+					mp.POST("/snippets/:snippetId/reviews",            handlers.CreateReview)
 				}
 			}
 		}

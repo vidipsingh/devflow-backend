@@ -83,6 +83,28 @@ func (c *Client) CreateOrder(userID, planKey, receiptID string) (*OrderResponse,
 	}, nil
 }
 
+// CreateOrderRaw creates a Razorpay order for an arbitrary amount (paise).
+// Used for marketplace snippet purchases where the price is set by the creator.
+func (c *Client) CreateOrderRaw(amountPaise int, currency, receiptID string) (*OrderResponse, error) {
+	data := map[string]interface{}{
+		"amount":   amountPaise,
+		"currency": currency,
+		"receipt":  receiptID,
+	}
+	body, err := c.rz.Order.Create(data, nil)
+	if err != nil {
+		return nil, fmt.Errorf("razorpay create order: %w", err)
+	}
+	orderID, _ := body["id"].(string)
+	amtFloat, _ := body["amount"].(float64)
+	return &OrderResponse{
+		OrderID:  orderID,
+		Amount:   int64(math.Round(amtFloat)),
+		Currency: currency,
+		KeyID:    c.keyID,
+	}, nil
+}
+
 // VerifySignature verifies the Razorpay payment signature.
 // signature = HMAC-SHA256(keySecret, orderId + "|" + paymentId)
 func (c *Client) VerifySignature(orderID, paymentID, signature string) bool {
