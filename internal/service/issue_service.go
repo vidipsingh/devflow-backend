@@ -119,7 +119,12 @@ func CreateIssue(ctx context.Context, callerID bson.ObjectID, callerUsername, re
 		AuthorID: callerID.Hex(), AuthorName: callerUsername,
 		ActorID: callerID.Hex(), Timestamp: time.Now(),
 	})
-
+	_ = repository.InsertActivity(ctx, &models.ActivityEvent{
+		Type: "issue.created", ActorID: callerID.Hex(), ActorName: callerUsername,
+		RepoID: repo.ID.Hex(), RepoName: repo.FullName,
+		Meta:      map[string]any{"issueNumber": issue.Number, "title": issue.Title},
+		Timestamp: time.Now(),
+	})
 
 	// Increment repo open issues counter
 	_ = repository.UpdateRepoRaw(ctx, repo.ID, bson.M{
@@ -160,11 +165,21 @@ func UpdateIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, n
 			set["closedBy"] = callerID
 			stateDelta = -1
 
+			callerName := ""
+			if u, err := repository.FindUserByIDRaw(ctx, callerID.Hex()); err == nil && u != nil {
+				callerName = u.Username
+			}
 			kafka.Publish(ctx, kafka.TopicIssueEvents, kafka.IssueEvent{
-				Type: "issue.closed", IssueNumber: issue.Number, IssueTitle: issue.Title,
-				RepoID: repo.ID.Hex(), RepoSlug: repoSlug,
-				AuthorID: issue.AuthorID.Hex(), AuthorName: issue.AuthorName,
-				ActorID: callerID.Hex(), Timestamp: time.Now(),
+					Type: "issue.closed", IssueNumber: issue.Number, IssueTitle: issue.Title,
+					RepoID: repo.ID.Hex(), RepoSlug: repoSlug,
+					AuthorID: issue.AuthorID.Hex(), AuthorName: issue.AuthorName,
+					ActorID: callerID.Hex(), Timestamp: time.Now(),
+				})
+			_ = repository.InsertActivity(ctx, &models.ActivityEvent{
+				Type: "issue.closed", ActorID: callerID.Hex(), ActorName: callerName,
+				RepoID: repo.ID.Hex(), RepoName: repo.FullName,
+				Meta:      map[string]any{"issueNumber": issue.Number, "title": issue.Title},
+				Timestamp: time.Now(),
 			})
 		} else {
 			set["closedAt"] = nil

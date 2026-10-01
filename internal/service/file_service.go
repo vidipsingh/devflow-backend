@@ -123,6 +123,12 @@ func UploadFile(ctx context.Context, ownerID bson.ObjectID, ownerName string, re
 		ActorID: ownerID.Hex(), ActorName: ownerName,
 		Timestamp: time.Now(),
 	})
+	_ = repository.InsertActivity(ctx, &models.ActivityEvent{
+		Type: "file.uploaded", ActorID: ownerID.Hex(), ActorName: ownerName,
+		RepoID: repo.ID.Hex(), RepoName: repo.FullName,
+		Meta:      map[string]any{"path": req.Path, "branch": branch, "message": commitMsg},
+		Timestamp: time.Now(),
+	})
 
 	return commit, nil
 }

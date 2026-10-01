@@ -192,6 +192,9 @@ func NewRouter() *gin.Engine {
 
 					mp.POST("/snippets/:snippetId/reviews",            handlers.CreateReview)
 				}
+
+				// Analytics
+				protected.GET("/analytics/overview", handlers.GetAnalyticsOverview)
 			}
 		}
 	}

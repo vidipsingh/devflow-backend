@@ -209,6 +209,10 @@ func CreateRepository(ctx context.Context, ownerID bson.ObjectID, ownerUsername 
 		OwnerID: ownerID.Hex(), ActorID: ownerID.Hex(),
 		ActorName: ownerUsername, Timestamp: time.Now(),
 	})
+	_ = repository.InsertActivity(ctx, &models.ActivityEvent{
+		Type: "repo.created", ActorID: ownerID.Hex(), ActorName: ownerUsername,
+		RepoID: repo.ID.Hex(), RepoName: repo.FullName, Timestamp: time.Now(),
+	})
 	return repo, nil
 }
 
@@ -270,6 +274,10 @@ func DeleteRepository(ctx context.Context, ownerID bson.ObjectID, slug string) e
 		RepoSlug: repo.Slug, FullName: repo.FullName,
 		OwnerID: ownerID.Hex(), ActorID: ownerID.Hex(),
 		ActorName: ownerName, Timestamp: time.Now(),
+	})
+	_ = repository.InsertActivity(ctx, &models.ActivityEvent{
+		Type: "repo.deleted", ActorID: ownerID.Hex(), ActorName: ownerName,
+		RepoID: repo.ID.Hex(), RepoName: repo.FullName, Timestamp: time.Now(),
 	})
 	return repository.DeleteRepo(ctx, repo.ID)
 }
@@ -422,6 +430,10 @@ func ForkRepository(ctx context.Context, callerID bson.ObjectID, callerUsername,
 		RepoSlug: fork.Slug, FullName: fork.FullName,
 		OwnerID: callerID.Hex(), ActorID: callerID.Hex(),
 		ActorName: callerUsername, Timestamp: time.Now(),
+	})
+	_ = repository.InsertActivity(ctx, &models.ActivityEvent{
+		Type: "repo.forked", ActorID: callerID.Hex(), ActorName: callerUsername,
+		RepoID: fork.ID.Hex(), RepoName: fork.FullName, Timestamp: time.Now(),
 	})
 
 	// Increment upstream fork count

@@ -144,6 +144,12 @@ func CreatePR(ctx context.Context, ownerID bson.ObjectID, ownerName, repoSlug st
 		AuthorID: ownerID.Hex(), AuthorName: ownerName,
 		ActorID: ownerID.Hex(), ActorName: ownerName, Timestamp: time.Now(),
 	})
+	_ = repository.InsertActivity(ctx, &models.ActivityEvent{
+		Type: "pr.created", ActorID: ownerID.Hex(), ActorName: ownerName,
+		RepoID: repo.ID.Hex(), RepoName: repo.FullName,
+		Meta:      map[string]any{"prNumber": pr.Number, "title": pr.Title},
+		Timestamp: time.Now(),
+	})
 
 	_ = repository.IncrementRepoStat(ctx, repo.ID, "openPRs", 1)
 	// Fire async AI review
@@ -282,6 +288,12 @@ func MergePR(ctx context.Context, callerID bson.ObjectID, repoSlug string, numbe
 		RepoID: repo.ID.Hex(), RepoSlug: repoSlug, FullName: repo.FullName,
 		AuthorID: pr.AuthorID.Hex(), AuthorName: pr.AuthorName,
 		ActorID: callerID.Hex(), ActorName: callerName,
+		Timestamp: time.Now(),
+	})
+	_ = repository.InsertActivity(ctx, &models.ActivityEvent{
+		Type: "pr.merged", ActorID: callerID.Hex(), ActorName: callerName,
+		RepoID: repo.ID.Hex(), RepoName: repo.FullName,
+		Meta:      map[string]any{"prNumber": pr.Number, "title": pr.Title},
 		Timestamp: time.Now(),
 	})
 
