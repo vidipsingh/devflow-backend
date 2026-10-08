@@ -35,3 +35,7 @@ func InternalError(c *gin.Context, msg string) {
 func Unauthorized(c *gin.Context) {
     c.JSON(http.StatusUnauthorized, Response{Success: false, Error: "unauthorized"})
 }
+
+func Forbidden(c *gin.Context, msg string) {
+    c.JSON(http.StatusForbidden, Response{Success: false, Error: msg})
+}

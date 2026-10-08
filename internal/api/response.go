@@ -11,3 +11,4 @@ func BadRequest(c *gin.Context, msg string)    { response.BadRequest(c, msg) }
 func NotFound(c *gin.Context, msg string)      { response.NotFound(c, msg) }
 func InternalError(c *gin.Context, msg string) { response.InternalError(c, msg) }
 func Unauthorized(c *gin.Context)              { response.Unauthorized(c) }
+func Forbidden(c *gin.Context, msg string) { response.Forbidden(c, msg) }

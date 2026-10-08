@@ -65,8 +65,8 @@ func NewRouter() *gin.Engine {
 		// Marketplace
 		marketplace := v1.Group("/marketplace")
 		{
-			marketplace.GET("/snippets",              handlers.GetSnippets)
-			marketplace.GET("/snippets/:snippetId",   handlers.GetSnippet)
+			marketplace.GET("/snippets", handlers.GetSnippets)
+			marketplace.GET("/snippets/:snippetId", handlers.GetSnippet)
 			marketplace.GET("/snippets/:snippetId/reviews", handlers.GetSnippetReviews)
 		}
 
@@ -78,19 +78,19 @@ func NewRouter() *gin.Engine {
 		protected.Use(middleware.RequireAuth)
 		{
 			protected.GET("/me", func(c *gin.Context) {
-					userID := c.GetString("userID")
-					user, err := userRepo.FindByID(c.Request.Context(), userID)
-					if err != nil {
-						c.JSON(500, gin.H{"error": "failed to fetch user"})
-						return
-					}
-					c.JSON(200, gin.H{"data": gin.H{
-						"userId":   user.ID.Hex(),
-						"username": user.Username,
-						"email":    user.Email,
-						"plan":     user.Plan,
-					}})
-				})
+				userID := c.GetString("userID")
+				user, err := userRepo.FindByID(c.Request.Context(), userID)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "failed to fetch user"})
+					return
+				}
+				c.JSON(200, gin.H{"data": gin.H{
+					"userId":   user.ID.Hex(),
+					"username": user.Username,
+					"email":    user.Email,
+					"plan":     user.Plan,
+				}})
+			})
 			repos := protected.Group("/repositories")
 			{
 				repos.GET("", handlers.ListRepositories)
@@ -105,8 +105,8 @@ func NewRouter() *gin.Engine {
 				repos.GET("/:name/tree", handlers.GetTree)
 				repos.GET("/:name/blob", handlers.GetBlob)
 				repos.GET("/:name/commits", handlers.GetCommits)
-				repos.POST("/:name/fork",  handlers.ForkRepository)
-				repos.GET("/:name/forks",  handlers.ListForks)
+				repos.POST("/:name/fork", handlers.ForkRepository)
+				repos.GET("/:name/forks", handlers.ListForks)
 
 				// Issues
 				issues := repos.Group("/:name/issues")
@@ -125,10 +125,10 @@ func NewRouter() *gin.Engine {
 				// Notifications
 				notifs := protected.Group("/notifications")
 				{
-					notifs.GET("",                      handlers.ListNotifications)
-					notifs.GET("/unread-count",         handlers.GetUnreadCount)
-					notifs.PATCH("/read-all",           handlers.MarkAllRead)
-					notifs.PATCH("/:notifId/read",      handlers.MarkOneRead)
+					notifs.GET("", handlers.ListNotifications)
+					notifs.GET("/unread-count", handlers.GetUnreadCount)
+					notifs.PATCH("/read-all", handlers.MarkAllRead)
+					notifs.PATCH("/:notifId/read", handlers.MarkOneRead)
 				}
 
 				// Pull Requests
@@ -145,7 +145,7 @@ func NewRouter() *gin.Engine {
 					prs.PATCH("/:number/comments/:commentId", handlers.UpdatePRComment)
 					prs.DELETE("/:number/comments/:commentId", handlers.DeletePRComment)
 					prs.POST("/:number/ai-review", handlers.TriggerAIReview)
-					
+
 				}
 
 				// Pair Programming Sessions
@@ -166,35 +166,68 @@ func NewRouter() *gin.Engine {
 					pr.GET("/review-sessions/:sessionId", reviewHandler.GetReviewSession)
 					pr.POST("/review-sessions/:sessionId/end", reviewHandler.EndReviewSession)
 				}
-				
+
 				// Payments
 				payments := protected.Group("/payments")
 				{
-					payments.POST("/orders",  handlers.CreatePaymentOrder)
-					payments.POST("/verify",  handlers.VerifyPayment)
-					payments.GET("/history",  handlers.GetPaymentHistory)
+					payments.POST("/orders", handlers.CreatePaymentOrder)
+					payments.POST("/verify", handlers.VerifyPayment)
+					payments.GET("/history", handlers.GetPaymentHistory)
 				}
 
 				// Marketplace
 				mp := protected.Group("/marketplace")
 				{
-					mp.GET("/my-snippets",  handlers.GetMySnippets)
-					mp.GET("/purchases",    handlers.GetMyPurchases)
+					mp.GET("/my-snippets", handlers.GetMySnippets)
+					mp.GET("/purchases", handlers.GetMyPurchases)
 
-					mp.POST("/snippets",                               handlers.CreateSnippet)
-					mp.PATCH("/snippets/:snippetId",                   handlers.UpdateSnippet)
-					mp.DELETE("/snippets/:snippetId",                  handlers.DeleteSnippet)
-					mp.PATCH("/snippets/:snippetId/publish",           handlers.PublishSnippet)
-					mp.GET("/snippets/:snippetId/download",            handlers.DownloadSnippet)
+					mp.POST("/snippets", handlers.CreateSnippet)
+					mp.PATCH("/snippets/:snippetId", handlers.UpdateSnippet)
+					mp.DELETE("/snippets/:snippetId", handlers.DeleteSnippet)
+					mp.PATCH("/snippets/:snippetId/publish", handlers.PublishSnippet)
+					mp.GET("/snippets/:snippetId/download", handlers.DownloadSnippet)
 
-					mp.POST("/snippets/:snippetId/purchase/order",     handlers.CreatePurchaseOrder)
-					mp.POST("/snippets/:snippetId/purchase/verify",    handlers.VerifyPurchase)
+					mp.POST("/snippets/:snippetId/purchase/order", handlers.CreatePurchaseOrder)
+					mp.POST("/snippets/:snippetId/purchase/verify", handlers.VerifyPurchase)
 
-					mp.POST("/snippets/:snippetId/reviews",            handlers.CreateReview)
+					mp.POST("/snippets/:snippetId/reviews", handlers.CreateReview)
 				}
 
 				// Analytics
 				protected.GET("/analytics/overview", handlers.GetAnalyticsOverview)
+
+				// Teams
+				teams := protected.Group("/teams")
+				{
+					teams.POST("", handlers.CreateTeam)
+					teams.GET("", handlers.ListMyTeams)
+					teams.GET("/discover", handlers.ListPublicTeams)
+					teams.GET("/invites/me", handlers.ListMyInvites)
+					teams.POST("/invites/:token/accept", handlers.AcceptInvite)
+					teams.POST("/invites/:token/decline", handlers.DeclineInvite)
+
+					teams.GET("/:slug", handlers.GetTeam)
+					teams.PATCH("/:slug", handlers.UpdateTeam)
+					teams.DELETE("/:slug", handlers.DeleteTeam)
+					teams.GET("/:slug/sub-teams", handlers.ListSubTeams)
+
+					teams.GET("/:slug/members/me", handlers.GetMyMembership)
+					teams.GET("/:slug/members", handlers.ListTeamMembers)
+					teams.PATCH("/:slug/members/:username/role", handlers.UpdateMemberRole)
+					teams.DELETE("/:slug/members/:username", handlers.RemoveMember)
+					teams.PATCH("/:slug/members/:username/ban", handlers.BanMember)
+					teams.POST("/:slug/leave", handlers.LeaveTeam)
+					teams.POST("/:slug/transfer", handlers.TransferOwnership)
+
+					teams.POST("/:slug/invites", handlers.InviteMember)
+					teams.GET("/:slug/invites", handlers.ListPendingInvites)
+					teams.DELETE("/:slug/invites/:inviteId", handlers.RevokeInvite)
+
+					teams.POST("/:slug/join-requests", handlers.RequestToJoin)
+					teams.GET("/:slug/join-requests/me", handlers.GetMyJoinRequest)
+					teams.GET("/:slug/join-requests", handlers.ListJoinRequests)
+					teams.PATCH("/:slug/join-requests/:requestId", handlers.ReviewJoinRequest)
+				}
 			}
 		}
 	}
