@@ -26,6 +26,12 @@ var (
 	ErrTeamInviteOnly    = errors.New("this team is invite-only")
 )
 
+var (
+	ErrRepoAlreadyInTeam = errors.New("repository is already in this team")
+	ErrRepoNotOwned      = errors.New("you do not own this repository")
+	ErrInsufficientRole  = errors.New("you do not have sufficient role")
+)
+
 var teamSlugRe = regexp.MustCompile(`[^a-z0-9\-]`)
 
 func teamSlugify(name string) string {
@@ -560,6 +566,12 @@ func RequestToJoin(ctx context.Context, callerID bson.ObjectID, callerUsername, 
 	if err := repository.InsertJoinRequest(ctx, jr); err != nil {
 		return nil, err
 	}
+	go func() {
+		repository.NotifyTeamAdmins(context.Background(), team.ID,
+			"team_join_request", callerID.Hex(), callerUsername,
+			map[string]any{"teamSlug": team.Slug, "teamName": team.Name, "requestId": jr.ID.Hex()},
+		)
+	}()
 	return jr, nil
 }
 
@@ -570,6 +582,11 @@ func ReviewJoinRequest(ctx context.Context, callerID bson.ObjectID, slug, reques
 	}
 	caller, _ := repository.FindTeamMember(ctx, team.ID, callerID)
 	if caller == nil || !isTeamAdmin(caller.Role) {
+		return ErrInsufficientRole
+	}
+	reviewerUsername := caller.Username
+	// shadow the error return below — restore the if block
+	if false {
 		return ErrTeamForbidden
 	}
 
@@ -602,6 +619,26 @@ func ReviewJoinRequest(ctx context.Context, callerID bson.ObjectID, slug, reques
 			UpdatedAt: now,
 		}
 		_ = repository.InsertTeamMember(ctx, m)
+		go func() {
+			bgCtx := context.Background()
+			// Notify the requester
+			_ = repository.InsertNotification(bgCtx, &models.Notification{
+				RecipientID: jr.UserID.Hex(),
+				Type:        "team_join_approved",
+				ActorID:     callerID.Hex(),
+				ActorName:   reviewerUsername,
+				Meta:        map[string]any{"teamSlug": team.Slug, "teamName": team.Name},
+			})
+			// Activity + Audit
+			_ = repository.InsertTeamActivity(bgCtx, &models.TeamActivity{
+				TeamID: team.ID, ActorID: callerID, ActorName: reviewerUsername,
+				Action: models.TeamActionJoinRequestApproved, TargetType: "member", TargetName: jr.Username,
+			})
+			_ = repository.InsertTeamAuditLog(bgCtx, &models.TeamAuditLog{
+				TeamID: team.ID, ActorID: callerID, ActorUsername: reviewerUsername,
+				Action: models.TeamActionJoinRequestApproved, TargetUsername: jr.Username,
+			})
+		}()
 		_ = repository.IncrTeamStat(ctx, team.ID, "memberCount", 1)
 	}
 
@@ -618,4 +655,252 @@ func ListJoinRequests(ctx context.Context, callerID bson.ObjectID, slug string) 
 		return nil, ErrTeamForbidden
 	}
 	return repository.FindPendingJoinRequests(ctx, team.ID)
+}
+
+// AddTeamRepo links a caller-owned repository to a team (admin+ required).
+func AddTeamRepo(ctx context.Context, callerID bson.ObjectID, slug, repoName string) (*models.TeamRepo, error) {
+	team, err := repository.FindTeamBySlug(ctx, slug)
+	if err != nil || team == nil {
+		return nil, ErrTeamNotFound
+	}
+
+	// Caller must be admin+
+	member, err := repository.FindTeamMember(ctx, team.ID, callerID)
+	if err != nil || member == nil || member.IsBanned {
+		return nil, ErrNotMember
+	}
+	if !models.HasPermission(member.Role, models.PermManageRepos) {
+		return nil, ErrInsufficientRole
+	}
+
+	// Look up the repo — caller must own it
+	repo, err := repository.FindRepoByOwnerAndName(ctx, callerID, repoName)
+	if err != nil || repo == nil {
+		return nil, ErrRepoNotFound
+	}
+
+	// Duplicate Check
+	existing, err := repository.FindTeamRepo(ctx, team.ID, repo.ID)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, ErrRepoAlreadyInTeam
+	}
+
+	tr := &models.TeamRepo{
+		TeamID:       team.ID,
+		RepoID:       repo.ID,
+		RepoName:     repo.Name,
+		RepoSlug:     repo.Slug,
+		RepoFullName: repo.FullName,
+		Visibility:   repo.Visibility,
+		AddedBy:      callerID,
+	}
+	if err := repository.InsertTeamRepo(ctx, tr); err != nil {
+		return nil, err
+	}
+
+	// Increment repoCount
+	_ = repository.IncrTeamStat(ctx, team.ID, "repoCount", 1)
+
+	// Activity + Audit
+	go func() {
+		bgCtx := context.Background()
+		_ = repository.InsertTeamActivity(bgCtx, &models.TeamActivity{
+			TeamID: team.ID, ActorID: callerID, ActorName: member.Username,
+			Action: models.TeamActionRepoAdded, TargetType: "repo", TargetName: repo.Name,
+		})
+		_ = repository.InsertTeamAuditLog(bgCtx, &models.TeamAuditLog{
+			TeamID: team.ID, ActorID: callerID, ActorUsername: member.Username,
+			Action: models.TeamActionRepoAdded, Meta: map[string]any{"repoName": repo.Name},
+		})
+	}()
+	return tr, nil
+}
+
+// ListTeamRepos returns repos linked to a team.
+// Members see all; guests/viewers see only public repos.
+func ListTeamRepos(ctx context.Context, callerID bson.ObjectID, slug string, limit, skip int64) ([]models.TeamRepo, error) {
+	team, err := repository.FindTeamBySlug(ctx, slug)
+	if err != nil || team == nil {
+		return nil, ErrTeamNotFound
+	}
+
+	member, _ := repository.FindTeamMember(ctx, team.ID, callerID)
+	visFilter := ""
+	if member == nil || member.IsBanned || member.Role == models.TeamRoleGuest {
+		visFilter = "public"
+	}
+
+	repos, err := repository.FindTeamRepos(ctx, team.ID, visFilter, limit, skip)
+	if err != nil {
+		return nil, err
+	}
+
+	// Backfill RepoFullName for legacy documents that were inserted before the field existed.
+	for i := range repos {
+		if repos[i].RepoFullName == "" && !repos[i].RepoID.IsZero() {
+			if repo, err2 := repository.FindRepoByID(ctx, repos[i].RepoID); err2 == nil && repo != nil {
+				repos[i].RepoFullName = repo.FullName
+			}
+		}
+	}
+
+	return repos, nil
+}
+
+// RemoveTeamRepo unlinks a repo from a team (admin+ required).
+func RemoveTeamRepo(ctx context.Context, callerID bson.ObjectID, slug, repoSlug string) error {
+	team, err := repository.FindTeamBySlug(ctx, slug)
+	if err != nil || team == nil {
+		return ErrTeamNotFound
+	}
+	member, err := repository.FindTeamMember(ctx, team.ID, callerID)
+	if err != nil || member == nil || member.IsBanned {
+		return ErrTeamNotFound
+	}
+	if !models.HasPermission(member.Role, models.PermManageRepos) {
+		return ErrInsufficientRole
+	}
+
+	if err := repository.DeleteTeamRepo(ctx, team.ID, repoSlug); err != nil {
+		return err
+	}
+	_ = repository.IncrTeamStat(ctx, team.ID, "repoCount", -1)
+
+	go func() {
+		bgCtx := context.Background()
+		_ = repository.InsertTeamActivity(bgCtx, &models.TeamActivity{
+			TeamID: team.ID, ActorID: callerID, ActorName: member.Username,
+			Action: models.TeamActionRepoRemoved, TargetType: "repo", TargetName: repoSlug,
+		})
+		_ = repository.InsertTeamAuditLog(bgCtx, &models.TeamAuditLog{
+			TeamID: team.ID, ActorID: callerID, ActorUsername: member.Username,
+			Action: models.TeamActionRepoRemoved, Meta: map[string]any{"repoSlug": repoSlug},
+		})
+	}()
+	return nil
+}
+
+// Activity Feed
+func GetTeamActivity(ctx context.Context, callerID bson.ObjectID, slug string, limit, skip int64) ([]models.TeamActivity, error) {
+	team, err := repository.FindTeamBySlug(ctx, slug)
+	if err != nil || team == nil {
+		return nil, ErrTeamNotFound
+	}
+
+	// Must be a member to see activity
+	member, _ := repository.FindTeamMember(ctx, team.ID, callerID)
+	if member == nil || member.IsBanned {
+		return nil, ErrNotMember
+	}
+	return repository.FindTeamActivity(ctx, team.ID, limit, skip)
+}
+
+// Audit Logs
+func GetTeamAuditLog(ctx context.Context, callerID bson.ObjectID, slug string, limit, skip int64) ([]models.TeamAuditLog, error) {
+	team, err := repository.FindTeamBySlug(ctx, slug)
+	if err != nil || team == nil {
+		return nil, ErrTeamNotFound
+	}
+	member, _ := repository.FindTeamMember(ctx, team.ID, callerID)
+	if member == nil || member.IsBanned {
+		return nil, ErrNotMember
+	}
+	if !models.HasPermission(member.Role, models.PermManageSettings) {
+		return nil, ErrInsufficientRole
+	}
+	return repository.FindTeamAuditLog(ctx, team.ID, limit, skip)
+}
+
+// Sub-team creation via parent slug
+func CreateSubTeam(ctx context.Context, callerID bson.ObjectID, callerUsername, parentSlug string, req models.CreateSubTeamRequest) (*models.Team, error) {
+	parent, err := repository.FindTeamBySlug(ctx, parentSlug)
+	if err != nil || parent == nil {
+		return nil, ErrTeamNotFound
+	}
+	member, _ := repository.FindTeamMember(ctx, parent.ID, callerID)
+	if member == nil || member.IsBanned {
+		return nil, ErrNotMember
+	}
+	if !models.HasPermission(member.Role, models.PermManageSettings) {
+		return nil, ErrInsufficientRole
+	}
+
+	// Build slug from parent slug + child name
+	childSlug := parentSlug + "-" + slugify(req.Name)
+
+	// Ensure slug uniqueness
+	existing, _ := repository.FindTeamBySlug(ctx, childSlug)
+	if existing != nil {
+		return nil, errors.New("a team with that slug already exists")
+	}
+
+	if req.Visibility == "" {
+		req.Visibility = parent.Visibility
+	}
+	if req.JoinPolicy == "" {
+		req.JoinPolicy = models.TeamJoinInviteOnly
+	}
+
+	now := time.Now()
+	sub := &models.Team{
+		Name:        req.Name,
+		Slug:        childSlug,
+		Description: req.Description,
+		Type:        parent.Type,
+		Visibility:  req.Visibility,
+		JoinPolicy:  req.JoinPolicy,
+		Tags:        req.Tags,
+		ParentID:    &parent.ID,
+		CreatedBy:   callerID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := repository.CreateTeam(ctx, sub); err != nil {
+		return nil, err
+	}
+
+	// Add creator as owner
+	_ = repository.InsertTeamMember(ctx, &models.TeamMember{
+		TeamID:    sub.ID,
+		UserID:    callerID,
+		Username:  callerUsername,
+		Role:      models.TeamRoleOwner,
+		JoinedAt:  now,
+		UpdatedAt: now,
+	})
+	_ = repository.IncrTeamStat(ctx, sub.ID, "memberCount", 1)
+
+	go func() {
+		bgCtx := context.Background()
+		_ = repository.InsertTeamActivity(bgCtx, &models.TeamActivity{
+			TeamID: parent.ID, ActorID: callerID, ActorName: callerUsername,
+			Action: models.TeamActionSubTeamCreated, TargetType: "team", TargetName: sub.Name,
+		})
+		_ = repository.InsertTeamAuditLog(bgCtx, &models.TeamAuditLog{
+			TeamID: parent.ID, ActorID: callerID, ActorUsername: callerUsername,
+			Action: models.TeamActionSubTeamCreated, Meta: map[string]any{"subTeamSlug": childSlug},
+		})
+	}()
+
+	return sub, nil
+}
+
+// GetMyPermissions
+func GetMyPermissions(ctx context.Context, callerID bson.ObjectID, slug string) ([]string, string, error) {
+	team, err := repository.FindTeamBySlug(ctx, slug)
+	if err != nil || team == nil {
+		return nil, "", ErrTeamNotFound
+	}
+	member, _ := repository.FindTeamMember(ctx, team.ID, callerID)
+	if member == nil || member.IsBanned {
+		return nil, "", nil
+	}
+	perms := models.RolePermissions[member.Role]
+	if perms == nil {
+		perms = []string{}
+	}
+	return perms, member.Role, err
 }

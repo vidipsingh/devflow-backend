@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"strconv"
 
 	"devflow-backend/internal/api/response"
@@ -614,4 +615,186 @@ func ReviewJoinRequest(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{"reviewed": true})
+}
+
+// POST /teams/:slug/repos
+func AddTeamRepo(c *gin.Context) {
+	callerID, _, _, ok := callerTeamFields(c)
+	if !ok {
+		return
+	}
+	var body models.AddTeamRepoRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.BadRequest(c, "repoName is required")
+		return
+	}
+	tr, err := service.AddTeamRepo(c.Request.Context(), callerID, c.Param("slug"), body.RepoName)
+	if err != nil {
+		switch err {
+		case service.ErrTeamNotFound:
+			response.NotFound(c, "team not found")
+		case service.ErrNotMember, service.ErrInsufficientRole:
+			response.Forbidden(c, err.Error())
+		case service.ErrRepoNotFound, service.ErrRepoNotOwned:
+			response.BadRequest(c, err.Error())
+		case service.ErrRepoAlreadyInTeam:
+			response.BadRequest(c, "repository is already in this team")
+		default:
+			response.InternalError(c, err.Error())
+		}
+		return
+	}
+	response.Created(c, tr)
+}
+
+// GET /teams/:slug/repos
+func ListTeamRepos(c *gin.Context) {
+	callerID, _, _, ok := callerTeamFields(c)
+	if !ok {
+		return
+	}
+	limit := int64(50)
+	skip  := int64(0)
+	if l := c.Query("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+	if s := c.Query("skip"); s != "" {
+		fmt.Sscanf(s, "%d", &skip)
+	}
+	repos, err := service.ListTeamRepos(c.Request.Context(), callerID, c.Param("slug"), limit, skip)
+	if err != nil {
+		switch err {
+		case service.ErrTeamNotFound:
+			response.NotFound(c, "team not found")
+		default:
+			response.InternalError(c, err.Error())
+		}
+		return
+	}
+	response.OK(c, repos)
+}
+
+
+// DELETE /teams/:slug/repos/:repoSlug
+func RemoveTeamRepo(c *gin.Context) {
+	callerID, _, _, ok := callerTeamFields(c)
+	if !ok {
+		return
+	}
+	err := service.RemoveTeamRepo(c.Request.Context(), callerID, c.Param("slug"), c.Param("repoSlug"))
+	if err != nil {
+		switch err {
+		case service.ErrTeamNotFound:
+			response.NotFound(c, "team not found")
+		case service.ErrNotMember, service.ErrInsufficientRole:
+			response.Forbidden(c, err.Error())
+		default:
+			response.InternalError(c, err.Error())
+		}
+		return
+	}
+	response.OK(c, gin.H{"removed": true})
+}
+
+// GET /teams/:slug/activity
+func GetTeamActivity(c *gin.Context) {
+	callerID, _, _, ok := callerTeamFields(c)
+	if !ok {
+		return
+	}
+	limit := int64(30)
+	skip  := int64(0)
+	if l := c.Query("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+	if s := c.Query("skip"); s != "" {
+		fmt.Sscanf(s, "%d", &skip)
+	}
+	feed, err := service.GetTeamActivity(c.Request.Context(), callerID, c.Param("slug"), limit, skip)
+	if err != nil {
+		switch err {
+		case service.ErrTeamNotFound:
+			response.NotFound(c, "team not found")
+		case service.ErrNotMember:
+			response.Forbidden(c, "must be a member to view activity")
+		default:
+			response.InternalError(c, err.Error())
+		}
+		return
+	}
+	response.OK(c, feed)
+}
+
+// GET /teams/:slug/audit-log
+func GetTeamAuditLog(c *gin.Context) {
+	callerID, _, _, ok := callerTeamFields(c)
+	if !ok {
+		return
+	}
+	limit := int64(50)
+	skip  := int64(0)
+	if l := c.Query("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+	if s := c.Query("skip"); s != "" {
+		fmt.Sscanf(s, "%d", &skip)
+	}
+	logs, err := service.GetTeamAuditLog(c.Request.Context(), callerID, c.Param("slug"), limit, skip)
+	if err != nil {
+		switch err {
+		case service.ErrTeamNotFound:
+			response.NotFound(c, "team not found")
+		case service.ErrNotMember, service.ErrInsufficientRole:
+			response.Forbidden(c, err.Error())
+		default:
+			response.InternalError(c, err.Error())
+		}
+		return
+	}
+	response.OK(c, logs)
+}
+
+// POST /teams/:slug/sub-teams
+func CreateSubTeam(c *gin.Context) {
+	callerID, callerUsername, _, ok := callerTeamFields(c)
+	if !ok {
+		return
+	}
+	var body models.CreateSubTeamRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	sub, err := service.CreateSubTeam(c.Request.Context(), callerID, callerUsername, c.Param("slug"), body)
+	if err != nil {
+		switch err {
+		case service.ErrTeamNotFound:
+			response.NotFound(c, "parent team not found")
+		case service.ErrNotMember, service.ErrInsufficientRole:
+			response.Forbidden(c, err.Error())
+		default:
+			response.BadRequest(c, err.Error())
+		}
+		return
+	}
+	response.Created(c, sub)
+}
+
+// GET /teams/:slug/permissions/me
+func GetMyPermissions(c *gin.Context) {
+	callerID, _, _, ok := callerTeamFields(c)
+	if !ok {
+		return
+	}
+	perms, role, err := service.GetMyPermissions(c.Request.Context(), callerID, c.Param("slug"))
+	if err != nil {
+		switch err {
+		case service.ErrTeamNotFound:
+			response.NotFound(c, "team not found")
+		default:
+			response.InternalError(c, err.Error())
+		}
+		return
+	}
+	response.OK(c, gin.H{"role": role, "permissions": perms})
 }

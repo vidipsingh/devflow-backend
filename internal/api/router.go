@@ -227,6 +227,17 @@ func NewRouter() *gin.Engine {
 					teams.GET("/:slug/join-requests/me", handlers.GetMyJoinRequest)
 					teams.GET("/:slug/join-requests", handlers.ListJoinRequests)
 					teams.PATCH("/:slug/join-requests/:requestId", handlers.ReviewJoinRequest)
+
+					teams.GET("/:slug/permissions/me", handlers.GetMyPermissions)
+
+					teams.POST("/:slug/repos", handlers.AddTeamRepo)
+					teams.GET("/:slug/repos", handlers.ListTeamRepos)
+					teams.DELETE("/:slug/repos/:repoSlug", handlers.RemoveTeamRepo)
+
+					teams.GET("/:slug/activity", handlers.GetTeamActivity)
+					teams.GET("/:slug/audit-log", handlers.GetTeamAuditLog)
+
+					teams.POST("/:slug/sub-teams", handlers.CreateSubTeam)
 				}
 			}
 		}

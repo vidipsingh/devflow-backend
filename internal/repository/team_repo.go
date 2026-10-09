@@ -306,3 +306,131 @@ func UpdateJoinRequestStatus(ctx context.Context, id bson.ObjectID, status strin
 	}})
 	return err
 }
+
+// Team Repos
+func teamReposCol() *mongo.Collection   { return database.Collection("team_repos") }
+func teamActivityCol() *mongo.Collection { return database.Collection("team_activity") }
+func teamAuditCol() *mongo.Collection   { return database.Collection("team_audit_log") }
+
+func InsertTeamRepo(ctx context.Context, tr *models.TeamRepo) error {
+	tr.ID = bson.NewObjectID()
+	tr.AddedAt = time.Now()
+	_, err := teamReposCol().InsertOne(ctx, tr)
+	return err
+}
+
+func FindTeamRepo(ctx context.Context, teamID, repoID bson.ObjectID) (*models.TeamRepo, error) {
+	var tr models.TeamRepo
+	err := teamReposCol().FindOne(ctx, bson.M{"teamId": teamID, "repoId": repoID}).Decode(&tr)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	return &tr, err
+}
+
+func FindTeamRepoByName(ctx context.Context, teamID bson.ObjectID, repoSlug string) (*models.TeamRepo, error) {
+	var tr models.TeamRepo
+	err := teamReposCol().FindOne(ctx, bson.M{"teamId": teamID, "repuSlug": repoSlug}).Decode(&tr)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	return &tr, err
+}
+
+// FindTeamRepos returns repos linked to a team. Callers pass visibilityFilter=""
+// for admins/members with full access, or "public" for guests/viewers.
+func FindTeamRepos(ctx context.Context, teamID bson.ObjectID, visibilityFilter string, limit, skip int64) ([]models.TeamRepo, error) {
+	filter := bson.M{"teamId": teamID}
+	if visibilityFilter != "" {
+		filter["visibility"] = visibilityFilter
+	}
+	cur, err := teamReposCol().Find(ctx, filter,
+		options.Find().SetSort(bson.D{{Key: "addedAt", Value: -1}}).SetLimit(limit).SetSkip(skip))
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var repos []models.TeamRepo
+	return repos, cur.All(ctx, &repos)
+}
+
+func DeleteTeamRepo(ctx context.Context, teamID bson.ObjectID, repoSlug string) error {
+	_, err := teamReposCol().DeleteOne(ctx, bson.M{"teamId": teamID, "repoSlug": repoSlug})
+	return err
+}
+
+// Activity Feed
+func InsertTeamActivity(ctx context.Context, a *models.TeamActivity) error {
+	a.ID = bson.NewObjectID()
+	a.CreatedAt = time.Now()
+	_, err := teamActivityCol().InsertOne(ctx, a)
+	return err
+}
+
+func FindTeamActivity(ctx context.Context, teamID bson.ObjectID, limit, skip int64) ([]models.TeamActivity, error) {
+	cur, err := teamActivityCol().Find(ctx, bson.M{"teamId": teamID},
+		options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}).SetLimit(limit).SetSkip(skip))
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var activities []models.TeamActivity
+	return activities, cur.All(ctx, &activities)
+}
+
+// Audit Logs
+func InsertTeamAuditLog(ctx context.Context, entry *models.TeamAuditLog) error {
+	entry.ID = bson.NewObjectID()
+	entry.CreatedAt = time.Now()
+	_, err := teamAuditCol().InsertOne(ctx, entry)
+	return err
+}
+
+func FindTeamAuditLog(ctx context.Context, teamID bson.ObjectID, limit, skip int64) ([]models.TeamAuditLog, error) {
+	cur, err := teamAuditCol().Find(ctx, bson.M{"teamId": teamID},
+		options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}).SetLimit(limit).SetSkip(skip))
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var logs []models.TeamAuditLog
+	return logs, cur.All(ctx, &logs)
+}
+
+// NotifyTeamAdmins fires a notification to all non-banned owner+admin members of a team.
+func NotifyTeamAdmins(ctx context.Context, teamID bson.ObjectID, notifType, actorID, actorName string, meta map[string]any) {
+	cur, err := membersCol().Find(ctx,
+		bson.M{"teamId": teamID, "isBanned": false, "role": bson.M{"$in": bson.A{"owner", "admin"}}},
+		options.Find().SetProjection(bson.M{"userId": 1}))
+	if err != nil {
+		return
+	}
+	defer cur.Close(ctx)
+	var admins []struct {
+		UserID bson.ObjectID `bson:"userId"`
+	}
+	if err := cur.All(ctx, &admins); err != nil {
+		return
+	}
+	for _, a := range admins {
+		if a.UserID.Hex() == actorID {
+			continue // don't notify self
+		}
+		_ = InsertTeamNotification(ctx, &models.Notification{
+			RecipientID: a.UserID.Hex(),
+			Type:        notifType,
+			ActorID:     actorID,
+			ActorName:   actorName,
+			Meta:        meta,
+		})
+	}
+}
+
+// Notifications helper
+func InsertTeamNotification(ctx context.Context, n *models.Notification) error {
+	col := database.Collection("notifications")
+	n.ID = bson.NewObjectID()
+	n.CreatedAt = time.Now()
+	_, err := col.InsertOne(ctx, n)
+	return err
+}
