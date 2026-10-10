@@ -134,3 +134,42 @@ func DeleteIssue(ctx context.Context, id bson.ObjectID) error {
 	_, err := issueCol().DeleteOne(timeout, bson.M{"_id": id})
 	return err
 }
+
+// FindIssuesByAuthor returns paginated issues across ALL repos authored by the given user.
+// state: "" = all, "open", "closed"
+// repoSlug: "" = all repos, otherwise filter to a single slug
+func FindIssuesByAuthor(ctx context.Context, authorID bson.ObjectID, repoSlug, state string, page, limit int64) ([]models.Issue, int64, error) {
+	timeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	filter := bson.M{"authorId": authorID}
+	if state == "open" || state == "closed" {
+		filter["state"] = state
+	}
+	if repoSlug != "" {
+		filter["repoSlug"] = repoSlug
+	}
+
+	total, err := issueCol().CountDocuments(timeout, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	skip := (page - 1) * limit
+	opts := options.Find().
+		SetSort(bson.D{{Key: "createdAt", Value: -1}}).
+		SetSkip(skip).
+		SetLimit(limit)
+
+	cursor, err := issueCol().Find(timeout, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(timeout)
+
+	var issues []models.Issue
+	if err := cursor.All(timeout, &issues); err != nil {
+		return nil, 0, err
+	}
+	return issues, total, nil
+}

@@ -94,6 +94,57 @@ func DeletePR(ctx context.Context, id bson.ObjectID) error {
 	return err
 }
 
+// FindPRsByAuthor returns paginated PRs across ALL repos authored by the given user.
+// state: "" = all, "open", "closed", "merged"
+// repoSlug: "" = all repos, otherwise filter to a single slug
+func FindPRsByAuthor(ctx context.Context, authorID bson.ObjectID, repoSlug, state string, page, limit int64) ([]models.PullRequest, int64, error) {
+	timeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	filter := bson.M{"authorId": authorID}
+	if state == "open" || state == "closed" || state == "merged" {
+		filter["state"] = state
+	}
+	if repoSlug != "" {
+		filter["repoSlug"] = repoSlug
+	}
+
+	total, err := prCol().CountDocuments(timeout, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	skip := (page - 1) * limit
+	opts := options.Find().
+		SetSort(bson.D{{Key: "createdAt", Value: -1}}).
+		SetSkip(skip).
+		SetLimit(limit)
+
+	cursor, err := prCol().Find(timeout, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(timeout)
+
+	var prs []models.PullRequest
+	if err := cursor.All(timeout, &prs); err != nil {
+		return nil, 0, err
+	}
+	// Normalize nil slices so JSON encodes as [] not null
+	for i := range prs {
+		if prs[i].ChangedFiles == nil {
+			prs[i].ChangedFiles = []string{}
+		}
+		if prs[i].Comments == nil {
+			prs[i].Comments = []models.PRComment{}
+		}
+		if prs[i].Labels == nil {
+			prs[i].Labels = []models.IssueLabel{}
+		}
+	}
+	return prs, total, nil
+}
+
 func AddPRComment(ctx context.Context, prID bson.ObjectID, comment models.PRComment) error {
 	comment.ID = bson.NewObjectID()
 	comment.CreatedAt = time.Now()

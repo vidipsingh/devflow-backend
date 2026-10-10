@@ -9,9 +9,9 @@ import (
 
 	"devflow-backend/internal/database"
 	"devflow-backend/internal/git"
+	"devflow-backend/internal/kafka"
 	"devflow-backend/internal/models"
 	"devflow-backend/internal/repository"
-	"devflow-backend/internal/kafka"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -24,6 +24,16 @@ var (
 )
 
 const prsCacheTTL = 2 * time.Minute
+
+// ListMyPRs returns paginated PRs across ALL repos authored by callerID.
+// If repoSlug != "" only that repo is searched.
+func ListMyPRs(ctx context.Context, callerID bson.ObjectID, repoSlug, state string, page, limit int64) ([]models.PullRequest, int64, error) {
+	prs, total, err := repository.FindPRsByAuthor(ctx, callerID, repoSlug, state, page, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	return prs, total, nil
+}
 
 func ListPRs(ctx context.Context, callerID bson.ObjectID, repoSlug, state string) ([]models.PullRequest, error) {
 	repo, err := ResolveRepo(ctx, callerID, repoSlug)

@@ -12,13 +12,47 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
+// GET /api/v1/pulls?state=open|closed|merged&repo=slug&page=1&limit=20
+// Cross-repo: returns PRs authored by the caller across ALL their repos.
+func ListMyPRs(c *gin.Context) {
+	ownerID, ok := mustOwnerID(c)
+	if !ok {
+		return
+	}
+	state := c.DefaultQuery("state", "")
+	repo := c.DefaultQuery("repo", "")
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 64)
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	prs, total, err := service.ListMyPRs(c.Request.Context(), ownerID, repo, state, page, limit)
+	if err != nil {
+		response.InternalError(c, "failed to fetch pull requests")
+		return
+	}
+	response.OK(c, gin.H{
+		"pullRequests": prs,
+		"total":        total,
+		"page":         page,
+		"limit":        limit,
+	})
+}
+
 // GET /repositories/:name/pulls?state=open
 func ListPRs(c *gin.Context) {
-	ownerID,  ok := mustOwnerID(c)
-	if !ok { return }
+	ownerID, ok := mustOwnerID(c)
+	if !ok {
+		return
+	}
 	prs, err := service.ListPRs(c.Request.Context(), ownerID, c.Param("name"), c.Query("state"))
 	if err != nil {
-		response.NotFound(c, "repository not found"); return
+		response.NotFound(c, "repository not found")
+		return
 	}
 	response.OK(c, gin.H{"pullRequests": prs, "total": len(prs)})
 }
@@ -26,17 +60,21 @@ func ListPRs(c *gin.Context) {
 // POST /repositories/:name/pulls
 func CreatePR(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	var req models.CreatePRRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, err.Error()); return
+		response.BadRequest(c, err.Error())
+		return
 	}
 	pr, err := service.CreatePR(c.Request.Context(), ownerID, c.GetString("username"), c.Param("name"), req)
 	if errors.Is(err, service.ErrRepoNotFound) {
-		response.NotFound(c, "repository not found"); 
+		response.NotFound(c, "repository not found")
 	}
 	if err != nil {
-		response.InternalError(c, err.Error()); return
+		response.InternalError(c, err.Error())
+		return
 	}
 	response.Created(c, pr)
 }
@@ -44,14 +82,18 @@ func CreatePR(c *gin.Context) {
 // GET /repositories/:name/pulls/:number
 func GetPR(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	num, _ := strconv.Atoi(c.Param("number"))
 	pr, err := service.GetPR(c.Request.Context(), ownerID, c.Param("name"), num)
 	if errors.Is(err, service.ErrPRNotFound) || errors.Is(err, service.ErrRepoNotFound) {
-		response.NotFound(c, "pull request not found"); return
+		response.NotFound(c, "pull request not found")
+		return
 	}
 	if err != nil {
-		response.InternalError(c, err.Error()); return
+		response.InternalError(c, err.Error())
+		return
 	}
 	response.OK(c, pr)
 }
@@ -59,57 +101,98 @@ func GetPR(c *gin.Context) {
 // PATCH /repositories/:name/pulls/:number
 func UpdatePR(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	var req models.UpdatePRRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, err.Error()); return
+		response.BadRequest(c, err.Error())
+		return
 	}
 	num, _ := strconv.Atoi(c.Param("number"))
 	pr, err := service.UpdatePR(c.Request.Context(), ownerID, c.Param("name"), num, req)
-	if errors.Is(err, service.ErrPRNotFound) { response.NotFound(c, "pull request not found"); return }
-	if errors.Is(err, service.ErrPRForbidden) { response.Unauthorized(c); return }
-	if err != nil { response.InternalError(c, err.Error()); return }
+	if errors.Is(err, service.ErrPRNotFound) {
+		response.NotFound(c, "pull request not found")
+		return
+	}
+	if errors.Is(err, service.ErrPRForbidden) {
+		response.Unauthorized(c)
+		return
+	}
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
 	response.OK(c, pr)
 }
 
 // PATCH /repositories/:name/pulls/:number
 func DeletePR(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	num, _ := strconv.Atoi(c.Param("number"))
 	err := service.DeletePR(c.Request.Context(), ownerID, c.Param("name"), num)
-	if errors.Is(err, service.ErrPRNotFound) { response.NotFound(c, "pull request not found"); return }
-	if errors.Is(err, service.ErrPRForbidden) { response.Unauthorized(c); return }
-	if err != nil { response.InternalError(c, err.Error()); return }
+	if errors.Is(err, service.ErrPRNotFound) {
+		response.NotFound(c, "pull request not found")
+		return
+	}
+	if errors.Is(err, service.ErrPRForbidden) {
+		response.Unauthorized(c)
+		return
+	}
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
 	response.OK(c, gin.H{"message": "pull request deleted"})
 }
 
 // POST /repositories/:name/pulls/:number/merge
 func MergePR(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	var req models.MergePRRequest
 	_ = c.ShouldBindJSON(&req)
-	if req.Method == "" { req.Method = "merge" }
+	if req.Method == "" {
+		req.Method = "merge"
+	}
 	num, _ := strconv.Atoi(c.Param("number"))
 	pr, err := service.MergePR(c.Request.Context(), ownerID, c.Param("name"), num, req.Method)
-	if errors.Is(err, service.ErrPRNotFound) { response.NotFound(c, "pull request not found"); return }
-	if errors.Is(err, service.ErrPRForbidden) { response.Unauthorized(c); return }
-	if err != nil { response.InternalError(c, err.Error()); return }
+	if errors.Is(err, service.ErrPRNotFound) {
+		response.NotFound(c, "pull request not found")
+		return
+	}
+	if errors.Is(err, service.ErrPRForbidden) {
+		response.Unauthorized(c)
+		return
+	}
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
 	response.OK(c, pr)
 }
 
 // POST /repositories/:name/pulls/:number/comments
 func AddPRComment(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	var req models.CreatePRCommentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, err.Error()); return
+		response.BadRequest(c, err.Error())
+		return
 	}
 	num, _ := strconv.Atoi(c.Param("number"))
 	repo, _ := service.GetPR(c.Request.Context(), ownerID, c.Param("name"), num)
-	if repo == nil { response.NotFound(c, "pull request not found") }
+	if repo == nil {
+		response.NotFound(c, "pull request not found")
+	}
 
 	comment := models.PRComment{
 		AuthorID:   ownerID,
@@ -119,7 +202,8 @@ func AddPRComment(c *gin.Context) {
 		LineNumber: req.LineNumber,
 	}
 	if err := service.AddPRCommentDirect(c.Request.Context(), repo.ID, comment); err != nil {
-		response.InternalError(c, err.Error()); return
+		response.InternalError(c, err.Error())
+		return
 	}
 	response.Created(c, gin.H{"message": "comment added"})
 }
@@ -127,18 +211,28 @@ func AddPRComment(c *gin.Context) {
 // PATCH /repositories/:name/pulls/:number/comments/:commentId
 func UpdatePRComment(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	var req models.UpdatePRCommentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, err.Error()); return
+		response.BadRequest(c, err.Error())
+		return
 	}
 	num, _ := strconv.Atoi(c.Param("number"))
 	pr, _ := service.GetPR(c.Request.Context(), ownerID, c.Param("name"), num)
-	if pr == nil { response.NotFound(c, "pull request not found"); return }
+	if pr == nil {
+		response.NotFound(c, "pull request not found")
+		return
+	}
 	commentID, err := bson.ObjectIDFromHex(c.Param("commentId"))
-	if err != nil { response.BadRequest(c, "invalid comment id"); return }
+	if err != nil {
+		response.BadRequest(c, "invalid comment id")
+		return
+	}
 	if err := service.UpdatePRCommentDirect(c.Request.Context(), pr.ID, commentID, req.Body); err != nil {
-		response.InternalError(c, err.Error()); return
+		response.InternalError(c, err.Error())
+		return
 	}
 	response.OK(c, gin.H{"message": "comment added"})
 }
@@ -146,14 +240,23 @@ func UpdatePRComment(c *gin.Context) {
 // DELETE /repositories/:name/pulls/:number/comments/:commentId
 func DeletePRComment(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	num, _ := strconv.Atoi(c.Param("number"))
 	pr, _ := service.GetPR(c.Request.Context(), ownerID, c.Param("name"), num)
-	if pr == nil { response.NotFound(c, "pull request not found"); return }
+	if pr == nil {
+		response.NotFound(c, "pull request not found")
+		return
+	}
 	commentID, err := bson.ObjectIDFromHex(c.Param("commentId"))
-	if err != nil { response.BadRequest(c, "invalid comment id"); return }
+	if err != nil {
+		response.BadRequest(c, "invalid comment id")
+		return
+	}
 	if err := service.DeletePRCommentDirect(c.Request.Context(), pr.ID, commentID); err != nil {
-		response.InternalError(c, err.Error()); return
+		response.InternalError(c, err.Error())
+		return
 	}
 	response.OK(c, gin.H{"message": "comment deleted"})
 }
@@ -161,7 +264,9 @@ func DeletePRComment(c *gin.Context) {
 // GET /repositories/:name/pulls/:number/diff
 func GetPRDiff(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	num, _ := strconv.Atoi(c.Param("number"))
 	diff, err := service.GetPRDiff(c.Request.Context(), ownerID, c.Param("name"), num)
 	if errors.Is(err, service.ErrRepoNotFound) || errors.Is(err, service.ErrPRNotFound) {

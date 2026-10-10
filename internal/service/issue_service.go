@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"devflow-backend/internal/database"
+	"devflow-backend/internal/kafka"
 	"devflow-backend/internal/models"
 	"devflow-backend/internal/repository"
-	"devflow-backend/internal/kafka"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -21,6 +21,16 @@ var (
 )
 
 const issuesCacheTTL = 2 * time.Minute
+
+// ListMyIssues returns paginated issues across ALL repos authored by callerID.
+// If repoSlug != "" only that repo is searched.
+func ListMyIssues(ctx context.Context, callerID bson.ObjectID, repoSlug, state string, page, limit int64) ([]models.Issue, int64, error) {
+	issues, total, err := repository.FindIssuesByAuthor(ctx, callerID, repoSlug, state, page, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	return issues, total, nil
+}
 
 // ListIssues returns paginated issues for a repo (looked up by slug)
 func ListIssues(ctx context.Context, callerID bson.ObjectID, repoSlug, state string, page, limit int64) ([]models.Issue, int64, error) {
@@ -170,11 +180,11 @@ func UpdateIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, n
 				callerName = u.Username
 			}
 			kafka.Publish(ctx, kafka.TopicIssueEvents, kafka.IssueEvent{
-					Type: "issue.closed", IssueNumber: issue.Number, IssueTitle: issue.Title,
-					RepoID: repo.ID.Hex(), RepoSlug: repoSlug,
-					AuthorID: issue.AuthorID.Hex(), AuthorName: issue.AuthorName,
-					ActorID: callerID.Hex(), Timestamp: time.Now(),
-				})
+				Type: "issue.closed", IssueNumber: issue.Number, IssueTitle: issue.Title,
+				RepoID: repo.ID.Hex(), RepoSlug: repoSlug,
+				AuthorID: issue.AuthorID.Hex(), AuthorName: issue.AuthorName,
+				ActorID: callerID.Hex(), Timestamp: time.Now(),
+			})
 			_ = repository.InsertActivity(ctx, &models.ActivityEvent{
 				Type: "issue.closed", ActorID: callerID.Hex(), ActorName: callerName,
 				RepoID: repo.ID.Hex(), RepoName: repo.FullName,

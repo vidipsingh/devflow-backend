@@ -97,6 +97,10 @@ func NewRouter() *gin.Engine {
 					"plan":     user.Plan,
 				}})
 			})
+			// Cross-repo aggregation endpoints
+			protected.GET("/issues", handlers.ListMyIssues)
+			protected.GET("/pulls", handlers.ListMyPRs)
+
 			repos := protected.Group("/repositories")
 			{
 				repos.GET("", handlers.ListRepositories)
