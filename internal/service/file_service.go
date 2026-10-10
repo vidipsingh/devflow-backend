@@ -133,6 +133,115 @@ func UploadFile(ctx context.Context, ownerID bson.ObjectID, ownerName string, re
 	return commit, nil
 }
 
+// EditFile updates an existing file in-place (plain-text content) and creates a new commit.
+// Unlike UploadFile, the content is received as raw UTF-8 — no base64 decoding needed.
+func EditFile(ctx context.Context, ownerID bson.ObjectID, ownerName string, repoSlug string, req models.EditFileRequest) (*models.RepoCommit, error) {
+	// 1. Resolve repository
+	repo, err := ResolveRepo(ctx, ownerID, repoSlug)
+	if err != nil || repo == nil {
+		return nil, ErrRepoNotFound
+	}
+
+	branch := req.Branch
+	if branch == "" {
+		branch = repo.DefaultBranch
+	}
+
+	rawContent := []byte(req.Content)
+
+	// 2. Compute SHA256
+	sum := sha256.Sum256(rawContent)
+	sha := fmt.Sprintf("%x", sum)
+
+	// 3. Detect MIME type
+	mime := mimetype.Detect(rawContent)
+	mimeStr := mime.String()
+	encoding := "utf-8"
+	if !strings.HasPrefix(mimeStr, "text/") {
+		encoding = "binary"
+	}
+
+	// 4. Upload new version to GridFS (overwrites via named key)
+	gridFSName := fmt.Sprintf("%s/%s/%s", repo.ID.Hex(), branch, req.Path)
+	gridFSID, err := database.GridFSUpload(ctx, gridFSName, rawContent)
+	if err != nil {
+		return nil, fmt.Errorf("gridfs upload failed: %w", err)
+	}
+
+	// 5. Build commit message
+	commitMsg := req.Message
+	if commitMsg == "" {
+		commitMsg = fmt.Sprintf("Edit %s", path.Base(req.Path))
+	}
+	commitID := bson.NewObjectID()
+	shortHash := commitID.Hex()[:7]
+
+	// Count additions vs deletions vs old content
+	newLines := len(strings.Split(string(rawContent), "\n"))
+
+	commit := &models.RepoCommit{
+		ID:         commitID,
+		RepoID:     repo.ID,
+		Branch:     branch,
+		Message:    commitMsg,
+		AuthorID:   ownerID,
+		AuthorName: ownerName,
+		ShortHash:  shortHash,
+		FilePaths:  []string{req.Path},
+		Additions:  newLines,
+		Deletions:  0,
+	}
+	if err := repository.InsertCommit(ctx, commit); err != nil {
+		return nil, err
+	}
+
+	// 6. Upsert file metadata
+	now := time.Now()
+	fileMeta := &models.RepoFile{
+		RepoID:      repo.ID,
+		Path:        req.Path,
+		Name:        path.Base(req.Path),
+		Dir:         path.Dir(req.Path),
+		Size:        int64(len(rawContent)),
+		MimeType:    mimeStr,
+		Encoding:    encoding,
+		SHA:         sha,
+		GridFSID:    gridFSID,
+		Branch:      branch,
+		CommitID:    commitID,
+		IsDirectory: false,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := repository.UpsertFile(ctx, fileMeta); err != nil {
+		return nil, err
+	}
+
+	// 7. Ensure parent directories exist
+	if err := ensureDirectories(ctx, repo.ID, branch, req.Path, commitID, now); err != nil {
+		return nil, err
+	}
+
+	// 8. Invalidate Redis cache
+	database.RedisDelPattern(ctx, fmt.Sprintf("tree:%s:%s:*", repo.ID.Hex(), branch))
+	database.RedisDelPattern(ctx, fmt.Sprintf("blob:%s:%s:%s", repo.ID.Hex(), branch, req.Path))
+
+	kafka.Publish(ctx, kafka.TopicFileEvents, kafka.FileEvent{
+		Type: "file.edited", RepoID: repo.ID.Hex(),
+		Branch: branch, Path: req.Path,
+		ActorID: ownerID.Hex(), ActorName: ownerName,
+		Timestamp: time.Now(),
+	})
+	_ = repository.InsertActivity(ctx, &models.ActivityEvent{
+		Type: "file.edited", ActorID: ownerID.Hex(), ActorName: ownerName,
+		RepoID: repo.ID.Hex(), RepoName: repo.FullName,
+		Meta:      map[string]any{"path": req.Path, "branch": branch, "message": commitMsg},
+		Timestamp: time.Now(),
+	})
+
+	return commit, nil
+}
+
 // ensureDirectories upserts a directory entry for every parent path of filePath.
 func ensureDirectories(ctx context.Context, repoID bson.ObjectID, branch, filePath string, commitID bson.ObjectID, now time.Time) error {
 	dir := path.Dir(filePath)

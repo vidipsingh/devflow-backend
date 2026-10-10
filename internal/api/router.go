@@ -112,6 +112,7 @@ func NewRouter() *gin.Engine {
 				repos.GET("/:name/star", handlers.GetStarStatus)
 				repos.PATCH("/:name/star", handlers.StarRepository)
 				repos.POST("/:name/files", handlers.UploadFile)
+				repos.PATCH("/:name/files", handlers.EditFile)
 				repos.GET("/:name/tree", handlers.GetTree)
 				repos.GET("/:name/blob", handlers.GetBlob)
 				repos.GET("/:name/commits", handlers.GetCommits)

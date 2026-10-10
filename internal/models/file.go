@@ -60,3 +60,12 @@ type UploadFileRequest struct {
     Message string `json:"message"`                   // commit message
     Branch  string `json:"branch"`                    // defaults to repo.DefaultBranch
 }
+
+// EditFileRequest is the body for PATCH /repositories/:name/files.
+// Content is plain UTF-8 text (not base64) — the editor sends it as-is.
+type EditFileRequest struct {
+    Path    string `json:"path"    binding:"required"` // "src/main.go"
+    Content string `json:"content" binding:"required"` // plain-text file content
+    Message string `json:"message"`                   // commit message (optional)
+    Branch  string `json:"branch"`                    // defaults to repo.DefaultBranch
+}

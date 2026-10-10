@@ -114,6 +114,38 @@ func GetBlob(c *gin.Context) {
 	})
 }
 
+// PATCH /api/v1/repositories/:name/files
+func EditFile(c *gin.Context) {
+	ownerID, ok := mustOwnerID(c)
+	if !ok {
+		return
+	}
+
+	var req models.EditFileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	commit, err := service.EditFile(
+		c.Request.Context(),
+		ownerID,
+		c.GetString("username"),
+		c.Param("name"),
+		req,
+	)
+	if err == service.ErrRepoNotFound {
+		response.NotFound(c, "repository not found")
+		return
+	}
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+
+	response.OK(c, gin.H{"commit": commit})
+}
+
 func GetCommits(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)
 	if !ok {
