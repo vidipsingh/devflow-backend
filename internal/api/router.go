@@ -205,7 +205,10 @@ func NewRouter() *gin.Engine {
 				}
 
 				// Analytics
-				protected.GET("/analytics/overview", handlers.GetAnalyticsOverview)
+					protected.GET("/analytics/overview", handlers.GetAnalyticsOverview)
+					protected.GET("/analytics/repos", handlers.GetReposAnalytics)
+					protected.GET("/analytics/repos/:repoName", handlers.GetRepoAnalytics)
+					protected.GET("/analytics/teams/:slug", handlers.GetTeamAnalytics)
 
 				// Teams
 				teams := protected.Group("/teams")

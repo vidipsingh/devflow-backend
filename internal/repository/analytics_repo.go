@@ -373,6 +373,330 @@ func GetMonthlyRevenue(ctx context.Context, creatorID string, months int) ([]Mon
 	return out, cur.All(ctx, &out)
 }
 
+// ─── Time-series with granularity ─────────────────────────────────────────────
+
+// TimeSeriesPoint is a generic date+count point used for daily/weekly/monthly series.
+type TimeSeriesPoint struct {
+	Date  string `bson:"date"  json:"date"`
+	Count int    `bson:"count" json:"count"`
+}
+
+// granularityFormat maps "daily" → "%Y-%m-%d", "weekly" → "%Y-%U", "monthly" → "%Y-%m".
+func granularityFormat(granularity string) string {
+	switch granularity {
+	case "weekly":
+		return "%Y-%U"
+	case "monthly":
+		return "%Y-%m"
+	default: // "daily"
+		return "%Y-%m-%d"
+	}
+}
+
+// GetActivityTimeSeries returns commit/activity counts bucketed by the given granularity.
+func GetActivityTimeSeries(ctx context.Context, ownerID string, since time.Time, granularity string) ([]TimeSeriesPoint, error) {
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{
+			"actorId":   ownerID,
+			"timestamp": bson.M{"$gte": since},
+		}}},
+		{{Key: "$group", Value: bson.M{
+			"_id":   bson.M{"$dateToString": bson.M{"format": granularityFormat(granularity), "date": "$timestamp"}},
+			"count": bson.M{"$sum": 1},
+		}}},
+		{{Key: "$project", Value: bson.M{"_id": 0, "date": "$_id", "count": 1}}},
+		{{Key: "$sort", Value: bson.D{{Key: "date", Value: 1}}}},
+	}
+	cur, err := database.Collection("activity_feed").Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var out []TimeSeriesPoint
+	return out, cur.All(ctx, &out)
+}
+
+// ─── Per-repository analytics ─────────────────────────────────────────────────
+
+// RepoAnalytics holds analytics for a single repository.
+type RepoAnalytics struct {
+	RepoID      string            `json:"repoId"`
+	RepoName    string            `json:"repoName"`
+	Commits     int               `json:"commits"`
+	Stars       int               `json:"stars"`
+	Forks       int               `json:"forks"`
+	OpenIssues  int               `json:"openIssues"`
+	OpenPRs     int               `json:"openPRs"`
+	Language    string            `json:"language"`
+	TimeSeries  []TimeSeriesPoint `json:"timeSeries"`
+}
+
+// RepoSummary is a lightweight struct to read name+stats from the repositories collection.
+type RepoSummary struct {
+	ID       bson.ObjectID `bson:"_id"`
+	Name     string        `bson:"name"`
+	Language string        `bson:"language"`
+	Stats    struct {
+		Stars      int `bson:"stars"`
+		Forks      int `bson:"forks"`
+		OpenIssues int `bson:"openIssues"`
+		OpenPRs    int `bson:"openPRs"`
+	} `bson:"stats"`
+}
+
+// GetRepoAnalytics returns analytics for a specific repository owned by ownerID.
+func GetRepoAnalytics(ctx context.Context, ownerID, repoName string, since time.Time, granularity string) (*RepoAnalytics, error) {
+	oid, err := bson.ObjectIDFromHex(ownerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1. Load repo summary
+	var repo RepoSummary
+	err = database.Collection("repositories").FindOne(ctx, bson.M{
+		"ownerId": oid,
+		"name":    repoName,
+	}).Decode(&repo)
+	if err != nil {
+		return nil, err
+	}
+
+	repoIDStr := repo.ID.Hex()
+
+	// 2. Count commits (activity_feed entries) for this repo in the window
+	commitPipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{
+			"actorId":   ownerID,
+			"repoId":    repoIDStr,
+			"timestamp": bson.M{"$gte": since},
+		}}},
+		{{Key: "$count", Value: "total"}},
+	}
+	commitCur, err := database.Collection("activity_feed").Aggregate(ctx, commitPipeline)
+	commits := 0
+	if err == nil {
+		defer commitCur.Close(ctx)
+		var cr []struct{ Total int `bson:"total"` }
+		if e := commitCur.All(ctx, &cr); e == nil && len(cr) > 0 {
+			commits = cr[0].Total
+		}
+	}
+
+	// 3. Time series for this specific repo
+	tsPipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{
+			"actorId":   ownerID,
+			"repoId":    repoIDStr,
+			"timestamp": bson.M{"$gte": since},
+		}}},
+		{{Key: "$group", Value: bson.M{
+			"_id":   bson.M{"$dateToString": bson.M{"format": granularityFormat(granularity), "date": "$timestamp"}},
+			"count": bson.M{"$sum": 1},
+		}}},
+		{{Key: "$project", Value: bson.M{"_id": 0, "date": "$_id", "count": 1}}},
+		{{Key: "$sort", Value: bson.D{{Key: "date", Value: 1}}}},
+	}
+	tsCur, err := database.Collection("activity_feed").Aggregate(ctx, tsPipeline)
+	var ts []TimeSeriesPoint
+	if err == nil {
+		defer tsCur.Close(ctx)
+		_ = tsCur.All(ctx, &ts)
+	}
+	if ts == nil {
+		ts = []TimeSeriesPoint{}
+	}
+
+	return &RepoAnalytics{
+		RepoID:     repoIDStr,
+		RepoName:   repo.Name,
+		Commits:    commits,
+		Stars:      repo.Stats.Stars,
+		Forks:      repo.Stats.Forks,
+		OpenIssues: repo.Stats.OpenIssues,
+		OpenPRs:    repo.Stats.OpenPRs,
+		Language:   repo.Language,
+		TimeSeries: ts,
+	}, nil
+}
+
+// GetAllReposAnalytics returns per-repo activity summary for all repos owned by ownerID.
+type RepoActivitySummary struct {
+	RepoID   string `json:"repoId"`
+	RepoName string `json:"repoName"`
+	Language string `json:"language"`
+	Commits  int    `json:"commits"`
+	Stars    int    `json:"stars"`
+	Forks    int    `json:"forks"`
+}
+
+func GetAllReposAnalytics(ctx context.Context, ownerID string, since time.Time) ([]RepoActivitySummary, error) {
+	oid, err := bson.ObjectIDFromHex(ownerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch all repos for this owner
+	cur, err := database.Collection("repositories").Find(ctx, bson.M{"ownerId": oid})
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+
+	var repos []RepoSummary
+	if err := cur.All(ctx, &repos); err != nil {
+		return nil, err
+	}
+
+	// Build activity count per repoId from activity_feed
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{
+			"actorId":   ownerID,
+			"timestamp": bson.M{"$gte": since},
+		}}},
+		{{Key: "$group", Value: bson.M{
+			"_id":   "$repoId",
+			"count": bson.M{"$sum": 1},
+		}}},
+	}
+	actCur, err := database.Collection("activity_feed").Aggregate(ctx, pipeline)
+	activityMap := map[string]int{}
+	if err == nil {
+		defer actCur.Close(ctx)
+		var rows []struct {
+			ID    string `bson:"_id"`
+			Count int    `bson:"count"`
+		}
+		if e := actCur.All(ctx, &rows); e == nil {
+			for _, r := range rows {
+				activityMap[r.ID] = r.Count
+			}
+		}
+	}
+
+	out := make([]RepoActivitySummary, 0, len(repos))
+	for _, r := range repos {
+		out = append(out, RepoActivitySummary{
+			RepoID:   r.ID.Hex(),
+			RepoName: r.Name,
+			Language: r.Language,
+			Commits:  activityMap[r.ID.Hex()],
+			Stars:    r.Stats.Stars,
+			Forks:    r.Stats.Forks,
+		})
+	}
+	return out, nil
+}
+
+// ─── Team analytics ───────────────────────────────────────────────────────────
+
+// TeamAnalytics holds analytics for a team.
+type TeamAnalytics struct {
+	TotalMembers   int               `json:"totalMembers"`
+	TotalRepos     int               `json:"totalRepos"`
+	TotalCommits   int               `json:"totalCommits"`
+	TotalDiscussions int             `json:"totalDiscussions"`
+	MemberActivity []MemberActivity  `json:"memberActivity"`
+	TimeSeries     []TimeSeriesPoint `json:"timeSeries"`
+}
+
+// MemberActivity holds activity count for a single team member.
+type MemberActivity struct {
+	UserID   string `json:"userId"`
+	Username string `json:"username"`
+	Commits  int    `json:"commits"`
+}
+
+// GetTeamAnalytics returns analytics for a team identified by its slug.
+func GetTeamAnalytics(ctx context.Context, teamSlug string, since time.Time, granularity string) (*TeamAnalytics, error) {
+	// 1. Load team to get its ID
+	var team struct {
+		ID          bson.ObjectID `bson:"_id"`
+		MemberCount int           `bson:"memberCount"`
+		RepoCount   int           `bson:"repoCount"`
+	}
+	err := database.Collection("teams").FindOne(ctx, bson.M{"slug": teamSlug}).Decode(&team)
+	if err != nil {
+		return nil, err
+	}
+	teamIDStr := team.ID.Hex()
+
+	// 2. Count discussions for this team
+	discussionCount, _ := database.Collection("discussions").CountDocuments(ctx, bson.M{"teamId": team.ID})
+
+	// 3. Aggregate activity from activity_feed scoped to this team's members
+	// activity_feed has teamId field on team-scoped events; fall back to counting by teamId
+	tsPipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{
+			"teamId":    teamIDStr,
+			"timestamp": bson.M{"$gte": since},
+		}}},
+		{{Key: "$group", Value: bson.M{
+			"_id":   bson.M{"$dateToString": bson.M{"format": granularityFormat(granularity), "date": "$timestamp"}},
+			"count": bson.M{"$sum": 1},
+		}}},
+		{{Key: "$project", Value: bson.M{"_id": 0, "date": "$_id", "count": 1}}},
+		{{Key: "$sort", Value: bson.D{{Key: "date", Value: 1}}}},
+	}
+	tsCur, _ := database.Collection("activity_feed").Aggregate(ctx, tsPipeline)
+	var ts []TimeSeriesPoint
+	if tsCur != nil {
+		defer tsCur.Close(ctx)
+		_ = tsCur.All(ctx, &ts)
+	}
+	if ts == nil {
+		ts = []TimeSeriesPoint{}
+	}
+
+	// 4. Total commits for this team
+	totalCommits := 0
+	for _, p := range ts {
+		totalCommits += p.Count
+	}
+
+	// 5. Per-member activity — join team_members with activity_feed
+	memberPipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"teamId": team.ID}}},
+		{{Key: "$lookup", Value: bson.M{
+			"from": "activity_feed",
+			"let":  bson.M{"uid": bson.M{"$toString": "$userId"}},
+			"pipeline": mongo.Pipeline{
+				{{Key: "$match", Value: bson.M{"$expr": bson.M{"$and": bson.A{
+					bson.M{"$eq": bson.A{"$actorId", "$$uid"}},
+					bson.M{"$gte": bson.A{"$timestamp", since}},
+				}}}}},
+				{{Key: "$count", Value: "c"}},
+			},
+			"as": "activity",
+		}}},
+		{{Key: "$project", Value: bson.M{
+			"_id":      0,
+			"userId":   bson.M{"$toString": "$userId"},
+			"username": 1,
+			"commits":  bson.M{"$ifNull": bson.A{bson.M{"$arrayElemAt": bson.A{"$activity.c", 0}}, 0}},
+		}}},
+		{{Key: "$sort", Value: bson.D{{Key: "commits", Value: -1}}}},
+		{{Key: "$limit", Value: 10}},
+	}
+	memberCur, err := database.Collection("team_members").Aggregate(ctx, memberPipeline)
+	var memberActivity []MemberActivity
+	if err == nil {
+		defer memberCur.Close(ctx)
+		_ = memberCur.All(ctx, &memberActivity)
+	}
+	if memberActivity == nil {
+		memberActivity = []MemberActivity{}
+	}
+
+	return &TeamAnalytics{
+		TotalMembers:     team.MemberCount,
+		TotalRepos:       team.RepoCount,
+		TotalCommits:     totalCommits,
+		TotalDiscussions: int(discussionCount),
+		MemberActivity:   memberActivity,
+		TimeSeries:       ts,
+	}, nil
+}
+
 func GetPlatformStats(ctx context.Context) (*models.PlatformStats, error) {
 	db := database.GetDB()
 	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
