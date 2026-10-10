@@ -15,6 +15,11 @@ import (
 )
 
 func NewRouter() *gin.Engine {
+	// Init discussion hub singleton and start its event loop.
+	discHub := ws.NewDiscussionHub()
+	ws.GlobalDiscussionHub = discHub
+	go discHub.Run()
+
 	r := gin.Default()
 
 	originsEnv := os.Getenv("ALLOWED_ORIGINS")
@@ -73,6 +78,7 @@ func NewRouter() *gin.Engine {
 		// WebSocket — auth via ?token= query param
 		v1.GET("/ws/pair/:sessionId", middleware.RequireAuthWS, handlers.PairSessionWS)
 		v1.GET("/ws/review/:sessionId", middleware.RequireAuthWS, reviewHandler.WebSocketSignaling)
+		v1.GET("/teams/:slug/discussions/ws", middleware.RequireAuthWS, handlers.WsDiscussions(discHub))
 
 		protected := v1.Group("/")
 		protected.Use(middleware.RequireAuth)
@@ -238,6 +244,18 @@ func NewRouter() *gin.Engine {
 					teams.GET("/:slug/audit-log", handlers.GetTeamAuditLog)
 
 					teams.POST("/:slug/sub-teams", handlers.CreateSubTeam)
+
+					// Team Discussions (REST)
+					teams.GET("/:slug/discussions", handlers.ListDiscussions)
+					teams.POST("/:slug/discussions", handlers.CreateDiscussion(discHub))
+					teams.GET("/:slug/discussions/:discussionId", handlers.GetDiscussion)
+					teams.PATCH("/:slug/discussions/:discussionId", handlers.UpdateDiscussion(discHub))
+					teams.PATCH("/:slug/discussions/:discussionId/pin", handlers.PinDiscussion(discHub))
+					teams.PATCH("/:slug/discussions/:discussionId/resolve", handlers.ResolveDiscussion(discHub))
+					teams.DELETE("/:slug/discussions/:discussionId", handlers.DeleteDiscussion(discHub))
+					teams.POST("/:slug/discussions/:discussionId/replies", handlers.AddReply(discHub))
+					teams.DELETE("/:slug/discussions/:discussionId/replies/:replyId", handlers.DeleteReply(discHub))
+					// WebSocket route is registered at v1 level above (uses RequireAuthWS)
 				}
 			}
 		}
