@@ -195,6 +195,60 @@ func DeleteReply(hub *ws.DiscussionHub) gin.HandlerFunc {
 	}
 }
 
+// POST /api/v1/teams/:slug/discussions/:discussionId/react
+func ReactToDiscussion(hub *ws.DiscussionHub) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		callerID := mustCallerID(c)
+		slug := c.Param("slug")
+		dID  := c.Param("discussionId")
+		var body struct {
+			Reaction string `json:"reaction" binding:"required,oneof=thumbsUp heart hooray rocket eyes laugh"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		added, err := service.ReactToDiscussion(c.Request.Context(), callerID, slug, dID, body.Reaction)
+		if err != nil {
+			c.JSON(serviceErrStatus(err), gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"add": added})
+		BroadcastDiscussionEvent(hub, slug, "react_discussion", gin.H{
+			"discussionId": dID,
+			"reaction":     body.Reaction,
+			"add":          added,
+		})
+	}
+}
+
+// POST /api/v1/teams/:slug/discussions/:discussionId/replies/:replyId/react
+func ReactToReply(hub *ws.DiscussionHub) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		callerID := mustCallerID(c)
+		slug := c.Param("slug")
+		rID  := c.Param("replyId")
+		var body struct {
+			Reaction string `json:"reaction" binding:"required,oneof=thumbsUp heart hooray rocket eyes laugh"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		added, err := service.ReactToReply(c.Request.Context(), callerID, slug, rID, body.Reaction)
+		if err != nil {
+			c.JSON(serviceErrStatus(err), gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"add": added})
+		BroadcastDiscussionEvent(hub, slug, "react_reply", gin.H{
+			"replyId":  rID,
+			"reaction": body.Reaction,
+			"add":      added,
+		})
+	}
+}
+
 // mustCallerID extracts the caller's ObjectID from the gin context (set by RequireAuth middleware).
 func mustCallerID(c *gin.Context) bson.ObjectID {
 	userIDStr := c.GetString("userID")

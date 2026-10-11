@@ -243,3 +243,92 @@ func DeleteReply(ctx context.Context, callerID bson.ObjectID, slug, discussionID
 	_ = repository.IncrDiscussionReplyCount(ctx, did, -1)
 	return nil
 }
+
+// ReactToDiscussion toggles a reaction on a discussion thread (one-per-person per reaction key).
+// Returns (added bool, err) — true = reaction was added, false = reaction was removed.
+func ReactToDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discussionID, reaction string) (bool, error) {
+	team, err := repository.FindTeamBySlug(ctx, slug)
+	if err != nil || team == nil {
+		return false, ErrTeamNotFound
+	}
+	member, _ := repository.FindTeamMember(ctx, team.ID, callerID)
+	if member == nil || member.IsBanned {
+		return false, ErrNotMember
+	}
+	oid, err := bson.ObjectIDFromHex(discussionID)
+	if err != nil {
+		return false, ErrDiscussionNotFound
+	}
+	// Toggle: if user already reacted, remove; otherwise add.
+	already, err := repository.HasUserReacted(ctx, oid, "discussion", callerID, reaction)
+	if err != nil {
+		return false, err
+	}
+	if already {
+		if err := repository.RemoveUserReaction(ctx, oid, "discussion", callerID, reaction); err != nil {
+			return false, err
+		}
+		return false, repository.ReactToDiscussion(ctx, oid, reaction, false)
+	}
+	if err := repository.AddUserReaction(ctx, oid, "discussion", callerID, reaction); err != nil {
+		return false, err
+	}
+	return true, repository.ReactToDiscussion(ctx, oid, reaction, true)
+}
+
+// ReactToReply toggles a reaction on a discussion reply (one-per-person per reaction key).
+// Returns (added bool, err) — true = reaction was added, false = reaction was removed.
+func ReactToReply(ctx context.Context, callerID bson.ObjectID, slug, replyID, reaction string) (bool, error) {
+	team, err := repository.FindTeamBySlug(ctx, slug)
+	if err != nil || team == nil {
+		return false, ErrTeamNotFound
+	}
+	member, _ := repository.FindTeamMember(ctx, team.ID, callerID)
+	if member == nil || member.IsBanned {
+		return false, ErrNotMember
+	}
+	rid, err := bson.ObjectIDFromHex(replyID)
+	if err != nil {
+		return false, ErrReplyNotFound
+	}
+	already, err := repository.HasUserReacted(ctx, rid, "reply", callerID, reaction)
+	if err != nil {
+		return false, err
+	}
+	if already {
+		if err := repository.RemoveUserReaction(ctx, rid, "reply", callerID, reaction); err != nil {
+			return false, err
+		}
+		return false, repository.ReactToReply(ctx, rid, reaction, false)
+	}
+	if err := repository.AddUserReaction(ctx, rid, "reply", callerID, reaction); err != nil {
+		return false, err
+	}
+	return true, repository.ReactToReply(ctx, rid, reaction, true)
+}
+
+// GetUserReactionsForDiscussion returns keys the current user has reacted with on a discussion.
+func GetUserReactionsForDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discussionID string) ([]string, error) {
+	team, err := repository.FindTeamBySlug(ctx, slug)
+	if err != nil || team == nil {
+		return nil, ErrTeamNotFound
+	}
+	oid, err := bson.ObjectIDFromHex(discussionID)
+	if err != nil {
+		return nil, ErrDiscussionNotFound
+	}
+	return repository.GetUserReactionsForTarget(ctx, oid, "discussion", callerID)
+}
+
+// GetUserReactionsForReply returns keys the current user has reacted with on a reply.
+func GetUserReactionsForReply(ctx context.Context, callerID bson.ObjectID, slug, replyID string) ([]string, error) {
+	team, err := repository.FindTeamBySlug(ctx, slug)
+	if err != nil || team == nil {
+		return nil, ErrTeamNotFound
+	}
+	rid, err := bson.ObjectIDFromHex(replyID)
+	if err != nil {
+		return nil, ErrReplyNotFound
+	}
+	return repository.GetUserReactionsForTarget(ctx, rid, "reply", callerID)
+}
