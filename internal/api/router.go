@@ -71,6 +71,7 @@ func NewRouter() *gin.Engine {
 		marketplace := v1.Group("/marketplace")
 		{
 			marketplace.GET("/snippets", handlers.GetSnippets)
+			marketplace.GET("/search", handlers.SearchSnippets)
 			marketplace.GET("/snippets/:snippetId", handlers.GetSnippet)
 			marketplace.GET("/snippets/:snippetId/reviews", handlers.GetSnippetReviews)
 		}

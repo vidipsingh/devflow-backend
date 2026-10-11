@@ -26,6 +26,11 @@ func GetTopSnippets(ctx context.Context, limit int, sortBy string) ([]models.Sni
 	return repository.FindPublishedSnippets(ctx, limit, sortBy)
 }
 
+// SearchMarketplaceSnippets runs the full search/filter/sort/paginate pipeline.
+func SearchMarketplaceSnippets(ctx context.Context, p repository.SnippetSearchParams) (repository.SnippetSearchResult, error) {
+	return repository.SearchSnippets(ctx, p)
+}
+
 func GetSnippetByID(ctx context.Context, id string) (*models.Snippet, error) {
 	s, err := repository.FindSnippetByID(ctx, id)
 	if err != nil {

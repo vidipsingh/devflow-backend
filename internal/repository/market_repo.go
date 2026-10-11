@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
+	"math"
+	"regexp"
 	"time"
 
 	"devflow-backend/internal/database"
@@ -19,6 +21,118 @@ func purchasesCol() *mongo.Collection { return database.Collection("snippet_purc
 func reviewsCol() *mongo.Collection   { return database.Collection("snippet_reviews") }
 
 // Snippets
+
+// SnippetSearchParams holds all filter/sort/pagination params for marketplace search.
+type SnippetSearchParams struct {
+	Query    string  // full-text search across title, description, tags
+	Language string  // exact language filter (empty = any)
+	MinPrice float64 // 0 = no lower bound
+	MaxPrice float64 // 0 = no upper bound
+	SortBy   string  // "popular" | "recent" | "price_asc" | "price_desc" | "rating"
+	Page     int     // 1-based
+	Limit    int     // items per page, max 50
+}
+
+// SnippetSearchResult wraps paginated results.
+type SnippetSearchResult struct {
+	Snippets   []models.Snippet
+	Total      int
+	Page       int
+	TotalPages int
+}
+
+// SearchSnippets runs a filtered, sorted, paginated query against the snippets collection.
+func SearchSnippets(ctx context.Context, p SnippetSearchParams) (SnippetSearchResult, error) {
+	// ── Defaults ──────────────────────────────────────────────────────────────
+	if p.Limit <= 0 || p.Limit > 50 {
+		p.Limit = 20
+	}
+	if p.Page <= 0 {
+		p.Page = 1
+	}
+
+	// ── Build $match filter ───────────────────────────────────────────────────
+	filter := bson.D{{Key: "status", Value: "published"}}
+
+	if p.Query != "" {
+		escaped := regexp.QuoteMeta(p.Query)
+		rx := bson.Regex{Pattern: escaped, Options: "i"}
+		filter = append(filter, bson.E{Key: "$or", Value: bson.A{
+			bson.M{"title": bson.M{"$regex": rx}},
+			bson.M{"description": bson.M{"$regex": rx}},
+			bson.M{"tags": bson.M{"$regex": rx}},
+		}})
+	}
+
+	if p.Language != "" {
+		filter = append(filter, bson.E{Key: "language", Value: bson.M{"$regex": bson.Regex{Pattern: "^" + regexp.QuoteMeta(p.Language) + "$", Options: "i"}}})
+	}
+
+	priceFilter := bson.D{}
+	if p.MinPrice > 0 {
+		priceFilter = append(priceFilter, bson.E{Key: "$gte", Value: p.MinPrice})
+	}
+	if p.MaxPrice > 0 {
+		priceFilter = append(priceFilter, bson.E{Key: "$lte", Value: p.MaxPrice})
+	}
+	if len(priceFilter) > 0 {
+		filter = append(filter, bson.E{Key: "pricing.price", Value: priceFilter})
+	}
+
+	// ── Sort ──────────────────────────────────────────────────────────────────
+	sortField, sortDir := "stats.downloads", -1
+	switch p.SortBy {
+	case "popular":
+		sortField, sortDir = "stats.downloads", -1
+	case "recent":
+		sortField, sortDir = "publishedAt", -1
+	case "price_asc":
+		sortField, sortDir = "pricing.price", 1
+	case "price_desc":
+		sortField, sortDir = "pricing.price", -1
+	case "rating":
+		sortField, sortDir = "stats.rating", -1
+	}
+
+	// ── Count total (for pagination) ─────────────────────────────────────────
+	total64, err := snippetsCol().CountDocuments(ctx, filter)
+	if err != nil {
+		return SnippetSearchResult{}, err
+	}
+	total := int(total64)
+	totalPages := int(math.Ceil(float64(total) / float64(p.Limit)))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	// ── Fetch page ────────────────────────────────────────────────────────────
+	skip := int64((p.Page - 1) * p.Limit)
+	opts := options.Find().
+		SetSort(bson.D{{Key: sortField, Value: sortDir}}).
+		SetSkip(skip).
+		SetLimit(int64(p.Limit))
+
+	cur, err := snippetsCol().Find(ctx, filter, opts)
+	if err != nil {
+		return SnippetSearchResult{}, err
+	}
+	defer cur.Close(ctx)
+
+	var snippets []models.Snippet
+	if err := cur.All(ctx, &snippets); err != nil {
+		return SnippetSearchResult{}, err
+	}
+	if snippets == nil {
+		snippets = []models.Snippet{}
+	}
+
+	return SnippetSearchResult{
+		Snippets:   snippets,
+		Total:      total,
+		Page:       p.Page,
+		TotalPages: totalPages,
+	}, nil
+}
 
 // FindPublishedSnippets returns published snippets sorted by the requested field.
 func FindPublishedSnippets(ctx context.Context, limit int, sortBy string) ([]models.Snippet, error) {

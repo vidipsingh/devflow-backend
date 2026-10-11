@@ -7,6 +7,7 @@ import (
 
 	api "devflow-backend/internal/api/response"
 	"devflow-backend/internal/models"
+	"devflow-backend/internal/repository"
 	"devflow-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,7 @@ func callerUsername(c *gin.Context) string { return c.GetString("username") }
 // Public handlers
 
 // GET /api/v1/marketplace/snippets?limit=6&sort=downloads
+// (legacy / featured — still used by the home page cards)
 func GetSnippets(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "6"))
 	sortBy := c.DefaultQuery("sort", "downloads")
@@ -34,6 +36,49 @@ func GetSnippets(c *gin.Context) {
 		snippets = []models.Snippet{}
 	}
 	api.OK(c, snippets)
+}
+
+// GET /api/v1/marketplace/search
+//
+//	?q=<text>
+//	&language=<lang>
+//	&minPrice=<float>
+//	&maxPrice=<float>
+//	&sort=popular|recent|price_asc|price_desc|rating
+//	&page=<int>
+//	&limit=<int>
+func SearchSnippets(c *gin.Context) {
+	q := c.Query("q")
+	language := c.Query("language")
+	minPrice, _ := strconv.ParseFloat(c.Query("minPrice"), 64)
+	maxPrice, _ := strconv.ParseFloat(c.Query("maxPrice"), 64)
+	sortBy := c.DefaultQuery("sort", "popular")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	result, err := service.SearchMarketplaceSnippets(c.Request.Context(), repository.SnippetSearchParams{
+		Query:    q,
+		Language: language,
+		MinPrice: minPrice,
+		MaxPrice: maxPrice,
+		SortBy:   sortBy,
+		Page:     page,
+		Limit:    limit,
+	})
+	if err != nil {
+		api.InternalError(c, "failed to search snippets")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"snippets":   result.Snippets,
+			"total":      result.Total,
+			"page":       result.Page,
+			"totalPages": result.TotalPages,
+		},
+	})
 }
 
 // GET /api/v1/marketplace/snippets/:snippetId
