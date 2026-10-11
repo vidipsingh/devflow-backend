@@ -150,6 +150,8 @@ func NewRouter() *gin.Engine {
 					prs.POST("", handlers.CreatePR)
 					prs.GET("/:number", handlers.GetPR)
 					prs.GET("/:number/diff", handlers.GetPRDiff)
+					prs.GET("/:number/inline-comments", handlers.GetPRInlineComments)
+					prs.POST("/:number/inline-comments/resolve", handlers.ResolveInlineThread)
 					prs.PATCH("/:number", handlers.UpdatePR)
 					prs.DELETE("/:number", handlers.DeletePR)
 					prs.POST("/:number/merge", handlers.MergePR)
@@ -157,7 +159,6 @@ func NewRouter() *gin.Engine {
 					prs.PATCH("/:number/comments/:commentId", handlers.UpdatePRComment)
 					prs.DELETE("/:number/comments/:commentId", handlers.DeletePRComment)
 					prs.POST("/:number/ai-review", handlers.TriggerAIReview)
-
 				}
 
 				// Pair Programming Sessions
@@ -206,10 +207,10 @@ func NewRouter() *gin.Engine {
 				}
 
 				// Analytics
-					protected.GET("/analytics/overview", handlers.GetAnalyticsOverview)
-					protected.GET("/analytics/repos", handlers.GetReposAnalytics)
-					protected.GET("/analytics/repos/:repoName", handlers.GetRepoAnalytics)
-					protected.GET("/analytics/teams/:slug", handlers.GetTeamAnalytics)
+				protected.GET("/analytics/overview", handlers.GetAnalyticsOverview)
+				protected.GET("/analytics/repos", handlers.GetReposAnalytics)
+				protected.GET("/analytics/repos/:repoName", handlers.GetRepoAnalytics)
+				protected.GET("/analytics/teams/:slug", handlers.GetTeamAnalytics)
 
 				// Teams
 				teams := protected.Group("/teams")

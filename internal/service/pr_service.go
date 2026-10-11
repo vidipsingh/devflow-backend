@@ -225,6 +225,19 @@ func UpdatePR(ctx context.Context, ownerID bson.ObjectID, repoSlug string, numbe
 	return repository.FindPRByNumber(ctx, repo.ID, number)
 }
 
+// ResolveInlineThread marks all comments at filePath:lineNumber as resolved.
+func ResolveInlineThread(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int, filePath string, lineNumber int) error {
+	repo, err := ResolveRepo(ctx, callerID, repoSlug)
+	if err != nil || repo == nil {
+		return ErrRepoNotFound
+	}
+	pr, err := repository.FindPRByNumber(ctx, repo.ID, number)
+	if err != nil || pr == nil {
+		return ErrPRNotFound
+	}
+	return repository.ResolveInlineThread(ctx, pr.ID, filePath, lineNumber)
+}
+
 func MergePR(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int, method string) (*models.PullRequest, error) {
 	repo, err := ResolveRepo(ctx, callerID, repoSlug)
 	if err != nil || repo == nil {

@@ -179,6 +179,25 @@ func DeletePRComment(ctx context.Context, prID bson.ObjectID, commentID bson.Obj
 	return err
 }
 
+// ResolveInlineThread marks every comment on (filePath, lineNumber) as resolved=true.
+func ResolveInlineThread(ctx context.Context, prID bson.ObjectID, filePath string, lineNumber int) error {
+	pr := &models.PullRequest{}
+	if err := prCol().FindOne(ctx, bson.M{"_id": prID}).Decode(pr); err != nil {
+		return err
+	}
+	for i, c := range pr.Comments {
+		if c.FilePath == filePath && c.LineNumber == lineNumber {
+			pr.Comments[i].Resolved = true
+			pr.Comments[i].UpdatedAt = time.Now()
+		}
+	}
+	_, err := prCol().UpdateOne(ctx,
+		bson.M{"_id": prID},
+		bson.M{"$set": bson.M{"comments": pr.Comments, "updatedAt": time.Now()}},
+	)
+	return err
+}
+
 func SetPRAIReview(ctx context.Context, prID bson.ObjectID, review *models.AIReview) error {
 	_, err := prCol().UpdateOne(ctx,
 			bson.M{"_id": prID},

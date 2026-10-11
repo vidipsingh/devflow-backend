@@ -79,6 +79,67 @@ func CreatePR(c *gin.Context) {
 	response.Created(c, pr)
 }
 
+// POST /repositories/:name/pulls/:number/inline-comments/resolve
+// Body: { "filePath": "...", "lineNumber": 5 }
+func ResolveInlineThread(c *gin.Context) {
+	ownerID, ok := mustOwnerID(c)
+	if !ok {
+		return
+	}
+	num, _ := strconv.Atoi(c.Param("number"))
+	var req struct {
+		FilePath   string `json:"filePath"   binding:"required"`
+		LineNumber int    `json:"lineNumber" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := service.ResolveInlineThread(c.Request.Context(), ownerID, c.Param("name"), num, req.FilePath, req.LineNumber); err != nil {
+		response.InternalError(c, "failed to resolve thread")
+		return
+	}
+	response.OK(c, gin.H{"resolved": true})
+}
+
+// GET /repositories/:name/pulls/:number/inline-comments
+// Returns all comments that have a filePath set, grouped by filePath.
+func GetPRInlineComments(c *gin.Context) {
+	ownerID, ok := mustOwnerID(c)
+	if !ok {
+		return
+	}
+	num, _ := strconv.Atoi(c.Param("number"))
+	pr, err := service.GetPR(c.Request.Context(), ownerID, c.Param("name"), num)
+	if err != nil || pr == nil {
+		response.NotFound(c, "pull request not found")
+		return
+	}
+
+	// Group inline comments by filePath
+	type FileComments struct {
+		FilePath string             `json:"filePath"`
+		Comments []models.PRComment `json:"comments"`
+	}
+	fileMap := map[string]*FileComments{}
+	var order []string
+	for _, c := range pr.Comments {
+		if c.FilePath == "" {
+			continue
+		}
+		if _, ok := fileMap[c.FilePath]; !ok {
+			fileMap[c.FilePath] = &FileComments{FilePath: c.FilePath, Comments: []models.PRComment{}}
+			order = append(order, c.FilePath)
+		}
+		fileMap[c.FilePath].Comments = append(fileMap[c.FilePath].Comments, c)
+	}
+	result := make([]FileComments, 0, len(order))
+	for _, fp := range order {
+		result = append(result, *fileMap[fp])
+	}
+	response.OK(c, result)
+}
+
 // GET /repositories/:name/pulls/:number
 func GetPR(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)

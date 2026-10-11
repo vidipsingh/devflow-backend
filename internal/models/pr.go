@@ -13,6 +13,7 @@ type PRComment struct {
 	FilePath   string        `bson:"filePath"      json:"filePath"`
 	LineNumber int           `bson:"lineNumber"    json:"lineNumber"`
 	IsEdited   bool          `bson:"isEdited"      json:"isEdited"`
+	Resolved   bool          `bson:"resolved"      json:"resolved"`
 	CreatedAt  time.Time     `bson:"createdAt"     json:"createdAt"`
 	UpdatedAt  time.Time     `bson:"updatedAt"     json:"updatedAt"`
 }
