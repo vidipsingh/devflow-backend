@@ -249,6 +249,23 @@ func ReactToReply(hub *ws.DiscussionHub) gin.HandlerFunc {
 	}
 }
 
+// GET /api/v1/teams/:slug/discussions/:discussionId/my-reactions
+// Returns which reaction keys the authenticated caller has given to this discussion + all its replies.
+func GetMyReactions(c *gin.Context) {
+	callerID := mustCallerID(c)
+	slug := c.Param("slug")
+	dID  := c.Param("discussionId")
+	result, err := service.GetMyReactionsForDiscussion(c.Request.Context(), callerID, slug, dID)
+	if err != nil {
+		c.JSON(serviceErrStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"discussionReactions": result.DiscussionReactions,
+		"replyReactions":      result.ReplyReactions,
+	}})
+}
+
 // mustCallerID extracts the caller's ObjectID from the gin context (set by RequireAuth middleware).
 func mustCallerID(c *gin.Context) bson.ObjectID {
 	userIDStr := c.GetString("userID")

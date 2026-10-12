@@ -332,3 +332,50 @@ func GetUserReactionsForReply(ctx context.Context, callerID bson.ObjectID, slug,
 	}
 	return repository.GetUserReactionsForTarget(ctx, rid, "reply", callerID)
 }
+
+// MyReactionsResult holds the caller's reactions for a discussion and all its replies.
+type MyReactionsResult struct {
+	DiscussionReactions []string            // reaction keys the caller gave to the discussion
+	ReplyReactions      map[string][]string // replyId -> reaction keys the caller gave
+}
+
+// GetMyReactionsForDiscussion returns all of the caller's reactions on a discussion thread
+// (both the discussion itself and all its replies).
+func GetMyReactionsForDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discussionID string) (*MyReactionsResult, error) {
+	team, err := repository.FindTeamBySlug(ctx, slug)
+	if err != nil || team == nil {
+		return nil, ErrTeamNotFound
+	}
+	member, _ := repository.FindTeamMember(ctx, team.ID, callerID)
+	if member == nil || member.IsBanned {
+		return nil, ErrNotMember
+	}
+	oid, err := bson.ObjectIDFromHex(discussionID)
+	if err != nil {
+		return nil, ErrDiscussionNotFound
+	}
+	// Discussion reactions
+	dReactions, err := repository.GetUserReactionsForTarget(ctx, oid, "discussion", callerID)
+	if err != nil {
+		return nil, err
+	}
+	// All replies for this discussion
+	replies, err := repository.FindRepliesByDiscussion(ctx, oid, 200, 0)
+	if err != nil {
+		return nil, err
+	}
+	replyReactions := make(map[string][]string)
+	for _, r := range replies {
+		keys, err := repository.GetUserReactionsForTarget(ctx, r.ID, "reply", callerID)
+		if err != nil {
+			continue
+		}
+		if len(keys) > 0 {
+			replyReactions[r.ID.Hex()] = keys
+		}
+	}
+	return &MyReactionsResult{
+		DiscussionReactions: dReactions,
+		ReplyReactions:      replyReactions,
+	}, nil
+}

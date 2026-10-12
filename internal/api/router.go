@@ -266,8 +266,9 @@ func NewRouter() *gin.Engine {
 					teams.POST("/:slug/discussions/:discussionId/replies", handlers.AddReply(discHub))
 					teams.DELETE("/:slug/discussions/:discussionId/replies/:replyId", handlers.DeleteReply(discHub))
 					// Reactions
-					teams.POST("/:slug/discussions/:discussionId/react", handlers.ReactToDiscussion(discHub))
-					teams.POST("/:slug/discussions/:discussionId/replies/:replyId/react", handlers.ReactToReply(discHub))
+						teams.GET("/:slug/discussions/:discussionId/my-reactions", handlers.GetMyReactions)
+						teams.POST("/:slug/discussions/:discussionId/react", handlers.ReactToDiscussion(discHub))
+						teams.POST("/:slug/discussions/:discussionId/replies/:replyId/react", handlers.ReactToReply(discHub))
 					// WebSocket route is registered at v1 level above (uses RequireAuthWS)
 				}
 			}
