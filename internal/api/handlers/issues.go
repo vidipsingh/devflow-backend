@@ -22,7 +22,7 @@ func mustIssueNumber(c *gin.Context) (int, bool) {
 	return n, true
 }
 
-// GET /api/v1/issues?state=open|closed&repo=slug&page=1&limit=20
+// GET /api/v1/issues?state=open|closed&repo=slug&label=bug&page=1&limit=20
 // Cross-repo: returns issues authored by the caller across ALL their repos.
 func ListMyIssues(c *gin.Context) {
 	callerID, ok := mustOwnerID(c)
@@ -31,6 +31,7 @@ func ListMyIssues(c *gin.Context) {
 	}
 	state := c.DefaultQuery("state", "")
 	repo := c.DefaultQuery("repo", "")
+	label := c.DefaultQuery("label", "")
 	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
 	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 64)
 	if page < 1 {
@@ -40,7 +41,7 @@ func ListMyIssues(c *gin.Context) {
 		limit = 20
 	}
 
-	issues, total, err := service.ListMyIssues(c.Request.Context(), callerID, repo, state, page, limit)
+	issues, total, err := service.ListMyIssues(c.Request.Context(), callerID, repo, state, label, page, limit)
 	if err != nil {
 		response.InternalError(c, "failed to fetch issues")
 		return
@@ -53,13 +54,14 @@ func ListMyIssues(c *gin.Context) {
 	})
 }
 
-// GET /api/v1/repositories/:name/issues?state=open|closed&page=1&limit=20
+// GET /api/v1/repositories/:name/issues?state=open|closed&label=bug&page=1&limit=20
 func ListIssues(c *gin.Context) {
 	callerID, ok := mustOwnerID(c)
 	if !ok {
 		return
 	}
 	state := c.DefaultQuery("state", "")
+	label := c.DefaultQuery("label", "")
 	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
 	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 64)
 	if page < 1 {
@@ -69,7 +71,7 @@ func ListIssues(c *gin.Context) {
 		limit = 20
 	}
 
-	issues, total, err := service.ListIssues(c.Request.Context(), callerID, c.Param("name"), state, page, limit)
+	issues, total, err := service.ListIssues(c.Request.Context(), callerID, c.Param("name"), state, label, page, limit)
 	if errors.Is(err, service.ErrRepoNotFound) {
 		response.NotFound(c, "repository not found")
 		return

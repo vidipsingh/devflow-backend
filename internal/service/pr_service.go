@@ -35,24 +35,31 @@ func ListMyPRs(ctx context.Context, callerID bson.ObjectID, repoSlug, state stri
 	return prs, total, nil
 }
 
-func ListPRs(ctx context.Context, callerID bson.ObjectID, repoSlug, state string) ([]models.PullRequest, error) {
+// ListPRs returns PRs for a repo, optionally filtered by state and/or label name.
+// When label != "" the Redis cache is bypassed.
+func ListPRs(ctx context.Context, callerID bson.ObjectID, repoSlug, state, label string) ([]models.PullRequest, error) {
 	repo, err := ResolveRepo(ctx, callerID, repoSlug)
 	if err != nil {
 		return nil, err
 	}
-	cacheKey := fmt.Sprintf("prs:%s:%s", repo.ID.Hex(), state)
-	if cached, ok := database.RedisGet(ctx, cacheKey); ok {
-		var prs []models.PullRequest
-		if err := json.Unmarshal([]byte(cached), &prs); err == nil {
-			return prs, nil
+	if label == "" {
+		cacheKey := fmt.Sprintf("prs:%s:%s", repo.ID.Hex(), state)
+		if cached, ok := database.RedisGet(ctx, cacheKey); ok {
+			var prs []models.PullRequest
+			if err := json.Unmarshal([]byte(cached), &prs); err == nil {
+				return prs, nil
+			}
 		}
 	}
-	prs, err := repository.FindPRsRepo(ctx, repo.ID, state)
+	prs, err := repository.FindPRsRepo(ctx, repo.ID, state, label)
 	if err != nil {
 		return nil, err
 	}
-	if data, err := json.Marshal(prs); err == nil {
-		database.RedisSet(ctx, cacheKey, string(data), prsCacheTTL)
+	if label == "" {
+		cacheKey := fmt.Sprintf("prs:%s:%s", repo.ID.Hex(), state)
+		if data, err := json.Marshal(prs); err == nil {
+			database.RedisSet(ctx, cacheKey, string(data), prsCacheTTL)
+		}
 	}
 	return prs, nil
 }

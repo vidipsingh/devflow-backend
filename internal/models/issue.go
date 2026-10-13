@@ -11,6 +11,31 @@ type IssueLabel struct {
 	Color string `bson:"color" json:"color"`
 }
 
+// RepoLabel is a label definition stored per-repository.
+// Lives in the "repo_labels" collection.
+type RepoLabel struct {
+	ID          bson.ObjectID `bson:"_id,omitempty" json:"id"`
+	RepoID      bson.ObjectID `bson:"repoId"        json:"repoId"`
+	RepoSlug    string        `bson:"repoSlug"      json:"repoSlug"`
+	Name        string        `bson:"name"          json:"name"`
+	Color       string        `bson:"color"         json:"color"`
+	Description string        `bson:"description"   json:"description"`
+	CreatedAt   time.Time     `bson:"createdAt"     json:"createdAt"`
+	UpdatedAt   time.Time     `bson:"updatedAt"     json:"updatedAt"`
+}
+
+type CreateRepoLabelRequest struct {
+	Name        string `json:"name"        binding:"required"`
+	Color       string `json:"color"       binding:"required"`
+	Description string `json:"description"`
+}
+
+type UpdateRepoLabelRequest struct {
+	Name        *string `json:"name"`
+	Color       *string `json:"color"`
+	Description *string `json:"description"`
+}
+
 type IssueReactions struct {
 	ThumbsUp   int `bson:"thumbsUp"   json:"thumbsUp"`
 	ThumbsDown int `bson:"thumbsDown" json:"thumbsDown"`

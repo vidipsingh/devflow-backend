@@ -43,13 +43,14 @@ func ListMyPRs(c *gin.Context) {
 	})
 }
 
-// GET /repositories/:name/pulls?state=open
+// GET /repositories/:name/pulls?state=open&label=bug
 func ListPRs(c *gin.Context) {
 	ownerID, ok := mustOwnerID(c)
 	if !ok {
 		return
 	}
-	prs, err := service.ListPRs(c.Request.Context(), ownerID, c.Param("name"), c.Query("state"))
+	label := c.DefaultQuery("label", "")
+	prs, err := service.ListPRs(c.Request.Context(), ownerID, c.Param("name"), c.Query("state"), label)
 	if err != nil {
 		response.NotFound(c, "repository not found")
 		return

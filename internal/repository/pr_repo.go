@@ -35,10 +35,14 @@ func InsertPR(ctx context.Context, pr *models.PullRequest) error {
 	return nil
 }
 
-func FindPRsRepo(ctx context.Context, repoID bson.ObjectID, state string) ([]models.PullRequest, error) {
+// FindPRsRepo returns all PRs for a repo, optionally filtered by state and/or label name.
+func FindPRsRepo(ctx context.Context, repoID bson.ObjectID, state, label string) ([]models.PullRequest, error) {
 	filter := bson.M{"repoId": repoID}
 	if state != "" {
 		filter["state"] = state
+	}
+	if label != "" {
+		filter["labels"] = bson.M{"$elemMatch": bson.M{"name": label}}
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "number", Value: -1}})
 	cur, err := prCol().Find(ctx, filter, opts)
@@ -162,7 +166,7 @@ func UpdatePRComment(ctx context.Context, prID bson.ObjectID, commentID bson.Obj
 		bson.M{"_id": prID, "comments._id": commentID},
 		bson.M{"$set": bson.M{
 			"comments.$.body":      body,
-			"comments.$.isEdited": true,
+			"comments.$.isEdited":  true,
 			"comments.$.updatedAt": time.Now(),
 			"updatedAt":            time.Now(),
 		}},
@@ -172,9 +176,9 @@ func UpdatePRComment(ctx context.Context, prID bson.ObjectID, commentID bson.Obj
 
 func DeletePRComment(ctx context.Context, prID bson.ObjectID, commentID bson.ObjectID) error {
 	_, err := prCol().UpdateOne(ctx, bson.M{"_id": prID}, bson.M{
-		"$pull":  bson.M{"comments": bson.M{"_id": commentID}},
-		"$inc":   bson.M{"commentCount": -1},
-		"$set":   bson.M{"updatedAt": time.Now()},
+		"$pull": bson.M{"comments": bson.M{"_id": commentID}},
+		"$inc":  bson.M{"commentCount": -1},
+		"$set":  bson.M{"updatedAt": time.Now()},
 	})
 	return err
 }
@@ -200,9 +204,9 @@ func ResolveInlineThread(ctx context.Context, prID bson.ObjectID, filePath strin
 
 func SetPRAIReview(ctx context.Context, prID bson.ObjectID, review *models.AIReview) error {
 	_, err := prCol().UpdateOne(ctx,
-			bson.M{"_id": prID},
-			bson.M{"$set": bson.M{
-			"aiReview": review,
+		bson.M{"_id": prID},
+		bson.M{"$set": bson.M{
+			"aiReview":  review,
 			"updatedAt": time.Now(),
 		}},
 	)

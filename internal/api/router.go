@@ -121,18 +121,27 @@ func NewRouter() *gin.Engine {
 				repos.GET("/:name/forks", handlers.ListForks)
 
 				// Issues
-				issues := repos.Group("/:name/issues")
-				{
-					issues.GET("", handlers.ListIssues)
-					issues.POST("", handlers.CreateIssue)
-					issues.GET("/:number", handlers.GetIssue)
-					issues.PATCH("/:number", handlers.UpdateIssue)
-					issues.DELETE("/:number", handlers.DeleteIssue)
-					issues.POST("/:number/comments", handlers.AddComment)
-					issues.PATCH("/:number/comments/:commentId", handlers.UpdateComment)
-					issues.DELETE("/:number/comments/:commentId", handlers.DeleteComment)
-					issues.POST("/:number/reactions", handlers.ReactToIssue)
-				}
+					issues := repos.Group("/:name/issues")
+					{
+						issues.GET("", handlers.ListIssues)
+						issues.POST("", handlers.CreateIssue)
+						issues.GET("/:number", handlers.GetIssue)
+						issues.PATCH("/:number", handlers.UpdateIssue)
+						issues.DELETE("/:number", handlers.DeleteIssue)
+						issues.POST("/:number/comments", handlers.AddComment)
+						issues.PATCH("/:number/comments/:commentId", handlers.UpdateComment)
+						issues.DELETE("/:number/comments/:commentId", handlers.DeleteComment)
+						issues.POST("/:number/reactions", handlers.ReactToIssue)
+					}
+	
+					// Labels (per-repository label definitions)
+					labels := repos.Group("/:name/labels")
+					{
+						labels.GET("", handlers.ListRepoLabels)
+						labels.POST("", handlers.CreateRepoLabel)
+						labels.PATCH("/:labelId", handlers.UpdateRepoLabel)
+						labels.DELETE("/:labelId", handlers.DeleteRepoLabel)
+					}
 
 				// Notifications
 				notifs := protected.Group("/notifications")

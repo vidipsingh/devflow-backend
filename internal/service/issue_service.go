@@ -24,33 +24,41 @@ const issuesCacheTTL = 2 * time.Minute
 
 // ListMyIssues returns paginated issues across ALL repos authored by callerID.
 // If repoSlug != "" only that repo is searched.
-func ListMyIssues(ctx context.Context, callerID bson.ObjectID, repoSlug, state string, page, limit int64) ([]models.Issue, int64, error) {
-	issues, total, err := repository.FindIssuesByAuthor(ctx, callerID, repoSlug, state, page, limit)
+// If label != "" only issues with that label name are returned.
+func ListMyIssues(ctx context.Context, callerID bson.ObjectID, repoSlug, state, label string, page, limit int64) ([]models.Issue, int64, error) {
+	issues, total, err := repository.FindIssuesByAuthor(ctx, callerID, repoSlug, state, label, page, limit)
 	if err != nil {
 		return nil, 0, err
 	}
 	return issues, total, nil
 }
 
-// ListIssues returns paginated issues for a repo (looked up by slug)
-func ListIssues(ctx context.Context, callerID bson.ObjectID, repoSlug, state string, page, limit int64) ([]models.Issue, int64, error) {
+// ListIssues returns paginated issues for a repo (looked up by slug).
+// If label != "" only issues with that label name are returned (cache is bypassed).
+func ListIssues(ctx context.Context, callerID bson.ObjectID, repoSlug, state, label string, page, limit int64) ([]models.Issue, int64, error) {
 	repo, err := ResolveRepo(ctx, callerID, repoSlug)
 	if err != nil {
 		return nil, 0, ErrRepoNotFound
 	}
-	cacheKey := fmt.Sprintf("issues:%s:%s:%d", repo.ID.Hex(), state, page)
-	if cached, ok := database.RedisGet(ctx, cacheKey); ok {
-		var issues []models.Issue
-		if err := json.Unmarshal([]byte(cached), &issues); err == nil {
-			return issues, int64(len(issues)), nil
+	// Only use cache when there is no label filter
+	if label == "" {
+		cacheKey := fmt.Sprintf("issues:%s:%s:%d", repo.ID.Hex(), state, page)
+		if cached, ok := database.RedisGet(ctx, cacheKey); ok {
+			var issues []models.Issue
+			if err := json.Unmarshal([]byte(cached), &issues); err == nil {
+				return issues, int64(len(issues)), nil
+			}
 		}
 	}
-	issues, total, err := repository.FindIssueByRepo(ctx, repo.ID, state, page, limit)
+	issues, total, err := repository.FindIssueByRepo(ctx, repo.ID, state, label, page, limit)
 	if err != nil {
 		return nil, 0, err
 	}
-	if data, err := json.Marshal(issues); err == nil {
-		database.RedisSet(ctx, cacheKey, string(data), issuesCacheTTL)
+	if label == "" {
+		cacheKey := fmt.Sprintf("issues:%s:%s:%d", repo.ID.Hex(), state, page)
+		if data, err := json.Marshal(issues); err == nil {
+			database.RedisSet(ctx, cacheKey, string(data), issuesCacheTTL)
+		}
 	}
 	return issues, total, nil
 }

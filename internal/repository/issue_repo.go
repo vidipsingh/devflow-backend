@@ -49,13 +49,17 @@ func CreateIssue(ctx context.Context, issue *models.Issue) error {
 
 // FindIssuesByRepo returns paginated issues for a repo
 // state: "" = all, "open", "closed"
-func FindIssueByRepo(ctx context.Context, repoID bson.ObjectID, state string, page, limit int64) ([]models.Issue, int64, error) {
+// label: "" = all, otherwise filter to issues containing that label name
+func FindIssueByRepo(ctx context.Context, repoID bson.ObjectID, state, label string, page, limit int64) ([]models.Issue, int64, error) {
 	timeout, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
 	filter := bson.M{"repoId": repoID}
 	if state == "open" || state == "closed" {
 		filter["state"] = state
+	}
+	if label != "" {
+		filter["labels"] = bson.M{"$elemMatch": bson.M{"name": label}}
 	}
 
 	total, err := issueCol().CountDocuments(timeout, filter)
@@ -138,7 +142,8 @@ func DeleteIssue(ctx context.Context, id bson.ObjectID) error {
 // FindIssuesByAuthor returns paginated issues across ALL repos authored by the given user.
 // state: "" = all, "open", "closed"
 // repoSlug: "" = all repos, otherwise filter to a single slug
-func FindIssuesByAuthor(ctx context.Context, authorID bson.ObjectID, repoSlug, state string, page, limit int64) ([]models.Issue, int64, error) {
+// label: "" = all, otherwise filter to issues containing that label name
+func FindIssuesByAuthor(ctx context.Context, authorID bson.ObjectID, repoSlug, state, label string, page, limit int64) ([]models.Issue, int64, error) {
 	timeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -148,6 +153,9 @@ func FindIssuesByAuthor(ctx context.Context, authorID bson.ObjectID, repoSlug, s
 	}
 	if repoSlug != "" {
 		filter["repoSlug"] = repoSlug
+	}
+	if label != "" {
+		filter["labels"] = bson.M{"$elemMatch": bson.M{"name": label}}
 	}
 
 	total, err := issueCol().CountDocuments(timeout, filter)
