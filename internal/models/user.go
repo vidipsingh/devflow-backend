@@ -24,6 +24,7 @@ type User struct {
 	Wallet       UserWallet         `bson:"wallet"           json:"wallet"`
 	Stats        UserStats          `bson:"stats"            json:"stats"`
 	Preferences  UserPreferences    `bson:"preferences"      json:"preferences"`
+	Sessions     []UserSession      `bson:"sessions"         json:"sessions,omitempty"`
 	LastLoginAt  *time.Time         `bson:"lastLoginAt"      json:"lastLoginAt"`
 	CreatedAt    time.Time          `bson:"createdAt"        json:"createdAt"`
 	UpdatedAt    time.Time          `bson:"updatedAt"        json:"updatedAt"`
@@ -56,7 +57,23 @@ type UserStats struct {
 }
 
 type UserPreferences struct {
-	Theme                string `bson:"theme"                json:"theme"`
-	EmailNotifications   bool   `bson:"emailNotifications"   json:"emailNotifications"`
-	DefaultVisibility    string `bson:"defaultVisibility"    json:"defaultVisibility"`
+	Theme                  string `bson:"theme"                  json:"theme"`                  // "dark" | "light" | "system"
+	EmailNotifications     bool   `bson:"emailNotifications"     json:"emailNotifications"`
+	PushNotifications      bool   `bson:"pushNotifications"      json:"pushNotifications"`
+	NotifyOnMention        bool   `bson:"notifyOnMention"        json:"notifyOnMention"`
+	NotifyOnPRReview       bool   `bson:"notifyOnPRReview"       json:"notifyOnPRReview"`
+	NotifyOnIssueAssigned  bool   `bson:"notifyOnIssueAssigned"  json:"notifyOnIssueAssigned"`
+	NotifyOnTeamInvite     bool   `bson:"notifyOnTeamInvite"     json:"notifyOnTeamInvite"`
+	DefaultVisibility      string `bson:"defaultVisibility"      json:"defaultVisibility"`     // "public" | "private"
+	DefaultBranch          string `bson:"defaultBranch"          json:"defaultBranch"`         // "main" | "master"
+	ShowEmail              bool   `bson:"showEmail"              json:"showEmail"`
+	WeeklyDigest           bool   `bson:"weeklyDigest"           json:"weeklyDigest"`
+}
+
+type UserSession struct {
+	SessionID string    `bson:"sessionId" json:"sessionId"`
+	UserAgent string    `bson:"userAgent" json:"userAgent"`
+	IP        string    `bson:"ip"        json:"ip"`
+	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+	LastSeen  time.Time `bson:"lastSeen"  json:"lastSeen"`
 }

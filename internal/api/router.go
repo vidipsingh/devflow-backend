@@ -280,6 +280,19 @@ func NewRouter() *gin.Engine {
 						teams.POST("/:slug/discussions/:discussionId/replies/:replyId/react", handlers.ReactToReply(discHub))
 					// WebSocket route is registered at v1 level above (uses RequireAuthWS)
 				}
+
+				// Settings
+				settings := protected.Group("/settings")
+				{
+					settings.GET("/profile",                    handlers.GetProfile)
+					settings.PATCH("/profile",                  handlers.UpdateProfile)
+					settings.PATCH("/preferences",              handlers.UpdatePreferences)
+					settings.POST("/security/change-password",  handlers.ChangePassword)
+					settings.GET("/security/sessions",          handlers.ListSessions)
+					settings.DELETE("/security/sessions",       handlers.RevokeAllSessions)
+					settings.DELETE("/security/sessions/:sessionId", handlers.RevokeSession)
+					settings.DELETE("/account",                 handlers.DeleteAccount)
+				}
 			}
 		}
 	}

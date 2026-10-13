@@ -181,3 +181,128 @@ func (r *UserRepo) UpdatePlan(ctx context.Context, userID, plan string) error {
 	}
 	return err
 }
+
+func UpdateProfile(ctx context.Context, userID string, updates bson.M) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+	col := database.Collection("users")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	updates["updatedAt"] = time.Now()
+	_, err = col.UpdateOne(ctx2, bson.M{"_id": oid}, bson.M{"$set": updates})
+	if err == nil {
+		database.RedisDel(ctx, "user:"+userID)
+	}
+	return err
+}
+
+func UpdatePreferences(ctx context.Context, userID string, prefs models.UserPreferences) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+	col := database.Collection("users")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err = col.UpdateOne(ctx2,
+		bson.M{"_id": oid},
+		bson.M{"$set": bson.M{
+			"preferences": prefs,
+			"updatedAt":   time.Now(),
+		}},
+	)
+	if err == nil {
+		database.RedisDel(ctx, "user:"+userID)
+	}
+	return err
+}
+
+func UpdatePassword(ctx context.Context, userID string, newHash string) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+	col := database.Collection("users")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err = col.UpdateOne(ctx2,
+		bson.M{"_id": oid},
+		bson.M{"$set": bson.M{
+			"passwordHash": newHash,
+			"updatedAt":    time.Now(),
+		}},
+	)
+	if err == nil {
+		database.RedisDel(ctx, "user:"+userID)
+	}
+	return err
+}
+
+func DeleteAccount(ctx context.Context, userID string) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+	col := database.Collection("users")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err = col.DeleteOne(ctx2, bson.M{"_id": oid})
+	if err == nil {
+		database.RedisDel(ctx, "user:"+userID)
+	}
+	return err
+}
+
+func AddSession(ctx context.Context, userID string, session models.UserSession) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+	col := database.Collection("users")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err = col.UpdateOne(ctx2,
+		bson.M{"_id": oid},
+		bson.M{"$push": bson.M{"sessions": session}},
+	)
+	return err
+}
+
+func RevokeSession(ctx context.Context, userID, sessionID string) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+	col := database.Collection("users")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err = col.UpdateOne(ctx2,
+		bson.M{"_id": oid},
+		bson.M{"$pull": bson.M{"sessions": bson.M{"sessionId": sessionID}}},
+	)
+	return err
+}
+
+func RevokeAllOtherSessions(ctx context.Context, userID, keepSessionID string) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+	col := database.Collection("users")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err = col.UpdateOne(ctx2,
+		bson.M{"_id": oid},
+		bson.M{"$pull": bson.M{"sessions": bson.M{"sessionId": bson.M{"$ne": keepSessionID}}}},
+	)
+	return err
+}
