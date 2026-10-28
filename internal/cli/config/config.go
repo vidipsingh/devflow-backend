@@ -27,7 +27,7 @@ func Load() (Config, error) {
 	}
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return Config{Host: "http://localhost:8080"}, nil
+		return Config{Host: "https://devflow-backend-ud3k.onrender.com"}, nil
 	}
 	if err != nil {
 		return Config{}, err

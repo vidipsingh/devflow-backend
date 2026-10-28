@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"devflow-backend/internal/cli/client"
 	"devflow-backend/internal/cli/config"
@@ -16,14 +17,60 @@ import (
 	"devflow-backend/internal/cli/state"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // init
 var InitCmd = &cobra.Command{
 	Use:   "init [repo-name]",
-	Short: "Initialise a local DevFlow workspace in the current directory",
+	Short: "Initialise a local DevFlow workspace (authenticates if needed)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+
+		// ── Step 1: Ensure authenticated ─────────────────────────────────────
+		cfg, _ := config.Load()
+		if cfg.Token == "" {
+			output.Bold("DevFlow — first time setup")
+			output.Dim("No credentials found. Please log in.")
+			fmt.Println()
+
+			reader := bufio.NewReader(os.Stdin)
+			fmt.Print("Email: ")
+			email, _ := reader.ReadString('\n')
+			email = strings.TrimSpace(email)
+
+			fmt.Print("Password: ")
+			raw, err := term.ReadPassword(int(syscall.Stdin))
+			fmt.Println()
+			if err != nil {
+				return err
+			}
+
+			c, err := client.New(false)
+			if err != nil {
+				return err
+			}
+			data, err := c.Post("/auth/login", map[string]string{
+				"email":    email,
+				"password": string(raw),
+			})
+			if err != nil {
+				return fmt.Errorf("login failed: %w", err)
+			}
+			m, _ := data.(map[string]any)
+			token, _ := m["token"].(string)
+			user, _ := m["user"].(map[string]any)
+			username, _ := user["username"].(string)
+
+			cfg.Token = token
+			if err := config.Save(cfg); err != nil {
+				return err
+			}
+			output.Success(fmt.Sprintf("Logged in as %s", username))
+			fmt.Println()
+		}
+
+		// ── Step 2: Initialise workspace ──────────────────────────────────────
 		s, _ := state.Load()
 		// Always resolve repo name: explicit arg > current directory name
 		if len(args) == 1 {
@@ -40,8 +87,9 @@ var InitCmd = &cobra.Command{
 		if err := state.Save(s); err != nil {
 			return err
 		}
-		output.Success(fmt.Sprintf("Initialised workspace → repo: %s, branch: %s", s.Repo, s.Branch))
+		output.Success(fmt.Sprintf("Workspace initialised → repo: %s, branch: %s", s.Repo, s.Branch))
 		output.Dim("  .devflow/state.json created")
+		output.Dim("  Next: devflow add .  →  devflow commit -m \"init\"  →  devflow push")
 		return nil
 	},
 }
