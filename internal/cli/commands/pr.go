@@ -24,23 +24,32 @@ var prListCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repo := repoArg(args)
-		if repo == "" { return fmt.Errorf("repo name required (or run inside a devflow workspace)") }
+		if repo == "" {
+			return fmt.Errorf("repo name required (or run inside a devflow workspace)")
+		}
 		st, _ := cmd.Flags().GetString("state")
 		c, err := client.New(true)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		data, err := c.Get("/repositories/" + repo + "/pulls?state=" + st)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		m, _ := data.(map[string]any)
 		prs, _ := m["pullRequests"].([]any)
 		if len(prs) == 0 {
-			output.Info("No pull requests found"); return nil
+			output.Info("No pull requests found")
+			return nil
 		}
 		rows := [][]string{}
 		for _, p := range prs {
 			pr, _ := p.(map[string]any)
 			num := fmt.Sprintf("#%v", pr["number"])
 			title, _ := pr["title"].(string)
-			if len(title) > 45 { title = title[:42] + "..." }
+			if len(title) > 45 {
+				title = title[:42] + "..."
+			}
 			head, _ := pr["headBranch"].(string)
 			base, _ := pr["baseBranch"].(string)
 			author, _ := pr["authorName"].(string)
@@ -58,11 +67,17 @@ var prViewCmd = &cobra.Command{
 	Args:  cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repo, numStr := repoAndNum(args)
-		if repo == "" { return fmt.Errorf("repo name required") }
+		if repo == "" {
+			return fmt.Errorf("repo name required")
+		}
 		c, err := client.New(true)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		data, err := c.Get("/repositories/" + repo + "/pulls/" + numStr)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		pr, _ := data.(map[string]any)
 		output.Bold(fmt.Sprintf("#%v %v  [%v]", pr["number"], pr["title"], pr["state"]))
 		output.Info(fmt.Sprintf("Author    : %v", pr["authorName"]))
@@ -72,7 +87,9 @@ var prViewCmd = &cobra.Command{
 		output.Dim(fmt.Sprintf("%v", pr["body"]))
 		if files, ok := pr["changedFiles"].([]any); ok && len(files) > 0 {
 			output.Dim("\nChanged files:")
-			for _, f := range files { output.Dim("  " + fmt.Sprintf("%v", f)) }
+			for _, f := range files {
+				output.Dim("  " + fmt.Sprintf("%v", f))
+			}
 		}
 		if comments, ok := pr["comments"].([]any); ok && len(comments) > 0 {
 			output.Dim(fmt.Sprintf("\n%d comment(s):", len(comments)))
@@ -91,7 +108,9 @@ var prCreateCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repo := repoArg(args)
-		if repo == "" { return fmt.Errorf("repo name required") }
+		if repo == "" {
+			return fmt.Errorf("repo name required")
+		}
 
 		s, _ := state.Load()
 		reader := bufio.NewReader(os.Stdin)
@@ -105,28 +124,38 @@ var prCreateCmd = &cobra.Command{
 		body = strings.TrimSpace(body)
 
 		head := s.Branch
-		if head == "" { head = "main" }
+		if head == "" {
+			head = "main"
+		}
 		fmt.Printf("Head branch [%s]: ", head)
 		headInput, _ := reader.ReadString('\n')
 		headInput = strings.TrimSpace(headInput)
-		if headInput != "" { head = headInput }
+		if headInput != "" {
+			head = headInput
+		}
 
 		fmt.Print("Base branch [main]: ")
 		base, _ := reader.ReadString('\n')
 		base = strings.TrimSpace(base)
-		if base == "" { base = "main" }
+		if base == "" {
+			base = "main"
+		}
 
 		c, err := client.New(true)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		data, err := c.Post("/repositories/"+repo+"/pulls", map[string]any{
 			"title":      title,
 			"body":       body,
 			"headBranch": head,
 			"baseBranch": base,
 		})
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		pr, _ := data.(map[string]any)
-		output.Success(fmt.Sprintf("PR #%v opened: %v → %v  — \"%v\"", pr["number"], head, base, title))
+		output.Success(fmt.Sprintf("PR #%v opened: %v → %v  - \"%v\"", pr["number"], head, base, title))
 		return nil
 	},
 }
@@ -137,15 +166,23 @@ var prMergeCmd = &cobra.Command{
 	Args:  cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repo, numStr := repoAndNum(args)
-		if repo == "" { return fmt.Errorf("repo name required") }
+		if repo == "" {
+			return fmt.Errorf("repo name required")
+		}
 		method, _ := cmd.Flags().GetString("method")
-		if method == "" { method = "merge" }
+		if method == "" {
+			method = "merge"
+		}
 		c, err := client.New(true)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		_, err = c.Post("/repositories/"+repo+"/pulls/"+numStr+"/merge", map[string]any{
 			"mergeMethod": method,
 		})
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		output.Success(fmt.Sprintf("PR #%s merged into base branch", numStr))
 		return nil
 	},
@@ -157,13 +194,19 @@ var prCloseCmd = &cobra.Command{
 	Args:  cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repo, numStr := repoAndNum(args)
-		if repo == "" { return fmt.Errorf("repo name required") }
+		if repo == "" {
+			return fmt.Errorf("repo name required")
+		}
 		c, err := client.New(true)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		_, err = c.Patch("/repositories/"+repo+"/pulls/"+numStr, map[string]string{
 			"state": "closed",
 		})
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		output.Success(fmt.Sprintf("PR #%s closed", numStr))
 		return nil
 	},
@@ -171,20 +214,30 @@ var prCloseCmd = &cobra.Command{
 
 // repoArg returns the repo name from args[0] or from state.json
 func repoArg(args []string) string {
-	if len(args) >= 1 { return args[0] }
-	if s, err := state.Load(); err == nil { return s.Repo }
+	if len(args) >= 1 {
+		return args[0]
+	}
+	if s, err := state.Load(); err == nil {
+		return s.Repo
+	}
 	return ""
 }
 
 // repoAndNum: if 2 args → (args[0], args[1]); if 1 arg → (state.Repo, args[0])
 func repoAndNum(args []string) (string, string) {
-	if len(args) == 2 { return args[0], args[1] }
-	if s, err := state.Load(); err == nil && s.Repo != "" { return s.Repo, args[0] }
+	if len(args) == 2 {
+		return args[0], args[1]
+	}
+	if s, err := state.Load(); err == nil && s.Repo != "" {
+		return s.Repo, args[0]
+	}
 	return "", args[0]
 }
 
 func lenOf(v any) int {
-	if s, ok := v.([]any); ok { return len(s) }
+	if s, ok := v.([]any); ok {
+		return len(s)
+	}
 	return 0
 }
 

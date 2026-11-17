@@ -80,7 +80,7 @@ func (c *Client) do(method, path string, body any) (map[string]any, error) {
 	return result, nil
 }
 
-// GET helper — returns the "data" field from the response envelope
+// GET helper - returns the "data" field from the response envelope
 func (c *Client) Get(path string) (any, error) {
 	res, err := c.do("GET", path, nil)
 	if err != nil {

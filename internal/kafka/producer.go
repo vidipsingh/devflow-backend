@@ -1,21 +1,21 @@
 package kafka
 
 import (
-    "context"
-    "encoding/json"
-    "log"
-    "os"
-    "sync"
-    "time"
+	"context"
+	"encoding/json"
+	"log"
+	"os"
+	"sync"
+	"time"
 
-    "github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go"
 )
 
 var (
-    writers   = map[string]*kafka.Writer{}
-    writersMu sync.RWMutex
-    brokers   []string
-    enabled   bool
+	writers   = map[string]*kafka.Writer{}
+	writersMu sync.RWMutex
+	brokers   []string
+	enabled   bool
 )
 
 // Init reads KAFKA_BROKERS env var (comma-separated) and marks Kafka enabled.
@@ -23,8 +23,8 @@ var (
 func Init() {
 	addr := os.Getenv("KAFKA_BROKERS")
 	if addr == "" {
-		log.Println("KAFKA_BROKERS not set — Kafka disabled")
-        return
+		log.Println("KAFKA_BROKERS not set - Kafka disabled")
+		return
 	}
 	// split by comma
 	for _, b := range splitCSV(addr) {
@@ -35,45 +35,45 @@ func Init() {
 }
 
 func splitCSV(s string) []string {
-    var out []string
-    cur := ""
-    for _, c := range s {
-        if c == ',' {
-            if cur != "" {
-                out = append(out, cur)
-                cur = ""
-            }
-        } else {
-            cur += string(c)
-        }
-    }
-    if cur != "" {
-        out = append(out, cur)
-    }
-    return out
+	var out []string
+	cur := ""
+	for _, c := range s {
+		if c == ',' {
+			if cur != "" {
+				out = append(out, cur)
+				cur = ""
+			}
+		} else {
+			cur += string(c)
+		}
+	}
+	if cur != "" {
+		out = append(out, cur)
+	}
+	return out
 }
 
 func writerFor(topic string) *kafka.Writer {
-    writersMu.RLock()
-    w, ok := writers[topic]
-    writersMu.RUnlock()
-    if ok {
-        return w
-    }
-    writersMu.Lock()
-    defer writersMu.Unlock()
+	writersMu.RLock()
+	w, ok := writers[topic]
+	writersMu.RUnlock()
+	if ok {
+		return w
+	}
+	writersMu.Lock()
+	defer writersMu.Unlock()
 	if w, ok := writers[topic]; ok {
 		return w
 	}
-    w = &kafka.Writer{
-        Addr:         kafka.TCP(brokers...),
-        Topic:        topic,
-        Balancer:     &kafka.LeastBytes{},
-        WriteTimeout: 5 * time.Second,
-        ReadTimeout:  5 * time.Second,
-    }
-    writers[topic] = w
-    return w
+	w = &kafka.Writer{
+		Addr:         kafka.TCP(brokers...),
+		Topic:        topic,
+		Balancer:     &kafka.LeastBytes{},
+		WriteTimeout: 5 * time.Second,
+		ReadTimeout:  5 * time.Second,
+	}
+	writers[topic] = w
+	return w
 }
 
 // Publish serialises payload as JSON and writes it to the topic.
@@ -85,7 +85,7 @@ func Publish(ctx context.Context, topic string, payload any) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		log.Printf("kafka.Publish marshal error: %v", err)
-        return
+		return
 	}
 	w := writerFor(topic)
 	if err := w.WriteMessages(ctx, kafka.Message{Value: data}); err != nil {

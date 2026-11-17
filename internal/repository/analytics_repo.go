@@ -11,7 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// Activity heatmap — sourced from activity_feed (actorId is string, timestamp field)
+// Activity heatmap - sourced from activity_feed (actorId is string, timestamp field)
 type DailyActivity struct {
 	Date  string `bson:"date"  json:"date"`
 	Count int    `bson:"count" json:"count"`
@@ -40,7 +40,7 @@ func GetDailyCommitActivity(ctx context.Context, ownerID string, since time.Time
 	return out, cur.All(ctx, &out)
 }
 
-// Language breakdown — Repository.Language is a single string field, not an array
+// Language breakdown - Repository.Language is a single string field, not an array
 type LanguageStat struct {
 	Language string `bson:"language" json:"language"`
 	Count    int    `bson:"count"    json:"count"`
@@ -70,7 +70,7 @@ func GetLanguageBreakdown(ctx context.Context, ownerID string) ([]LanguageStat, 
 	return out, cur.All(ctx, &out)
 }
 
-// Repository overview — stars/forks are nested under stats.stars / stats.forks
+// Repository overview - stars/forks are nested under stats.stars / stats.forks
 type RepoOverview struct {
 	TotalRepos   int `bson:"totalRepos"   json:"totalRepos"`
 	TotalStars   int `bson:"totalStars"   json:"totalStars"`
@@ -284,7 +284,7 @@ func GetSnippetPerformance(ctx context.Context, creatorID string) ([]SnippetPerf
 	return out, cur.All(ctx, &out)
 }
 
-// Pair session analytics — ownerId is a string (not ObjectID), participants is []ParticipantInfo
+// Pair session analytics - ownerId is a string (not ObjectID), participants is []ParticipantInfo
 type PairStats struct {
 	TotalSessions int     `bson:"totalSessions" json:"totalSessions"`
 	TotalMinutes  float64 `bson:"totalMinutes"  json:"totalMinutes"`
@@ -420,15 +420,15 @@ func GetActivityTimeSeries(ctx context.Context, ownerID string, since time.Time,
 
 // RepoAnalytics holds analytics for a single repository.
 type RepoAnalytics struct {
-	RepoID      string            `json:"repoId"`
-	RepoName    string            `json:"repoName"`
-	Commits     int               `json:"commits"`
-	Stars       int               `json:"stars"`
-	Forks       int               `json:"forks"`
-	OpenIssues  int               `json:"openIssues"`
-	OpenPRs     int               `json:"openPRs"`
-	Language    string            `json:"language"`
-	TimeSeries  []TimeSeriesPoint `json:"timeSeries"`
+	RepoID     string            `json:"repoId"`
+	RepoName   string            `json:"repoName"`
+	Commits    int               `json:"commits"`
+	Stars      int               `json:"stars"`
+	Forks      int               `json:"forks"`
+	OpenIssues int               `json:"openIssues"`
+	OpenPRs    int               `json:"openPRs"`
+	Language   string            `json:"language"`
+	TimeSeries []TimeSeriesPoint `json:"timeSeries"`
 }
 
 // RepoSummary is a lightweight struct to read name+stats from the repositories collection.
@@ -476,7 +476,9 @@ func GetRepoAnalytics(ctx context.Context, ownerID, repoName string, since time.
 	commits := 0
 	if err == nil {
 		defer commitCur.Close(ctx)
-		var cr []struct{ Total int `bson:"total"` }
+		var cr []struct {
+			Total int `bson:"total"`
+		}
 		if e := commitCur.All(ctx, &cr); e == nil && len(cr) > 0 {
 			commits = cr[0].Total
 		}
@@ -591,12 +593,12 @@ func GetAllReposAnalytics(ctx context.Context, ownerID string, since time.Time) 
 
 // TeamAnalytics holds analytics for a team.
 type TeamAnalytics struct {
-	TotalMembers   int               `json:"totalMembers"`
-	TotalRepos     int               `json:"totalRepos"`
-	TotalCommits   int               `json:"totalCommits"`
-	TotalDiscussions int             `json:"totalDiscussions"`
-	MemberActivity []MemberActivity  `json:"memberActivity"`
-	TimeSeries     []TimeSeriesPoint `json:"timeSeries"`
+	TotalMembers     int               `json:"totalMembers"`
+	TotalRepos       int               `json:"totalRepos"`
+	TotalCommits     int               `json:"totalCommits"`
+	TotalDiscussions int               `json:"totalDiscussions"`
+	MemberActivity   []MemberActivity  `json:"memberActivity"`
+	TimeSeries       []TimeSeriesPoint `json:"timeSeries"`
 }
 
 // MemberActivity holds activity count for a single team member.
@@ -653,7 +655,7 @@ func GetTeamAnalytics(ctx context.Context, teamSlug string, since time.Time, gra
 		totalCommits += p.Count
 	}
 
-	// 5. Per-member activity — join team_members with activity_feed
+	// 5. Per-member activity - join team_members with activity_feed
 	memberPipeline := mongo.Pipeline{
 		{{Key: "$match", Value: bson.M{"teamId": team.ID}}},
 		{{Key: "$lookup", Value: bson.M{
@@ -723,9 +725,9 @@ func GetPlatformStats(ctx context.Context) (*models.PlatformStats, error) {
 	}
 
 	return &models.PlatformStats{
-		TotalUsers: users,
+		TotalUsers:        users,
 		TotalRepositories: repos,
-		TotalSnippets: snippets,
-		TotalAIReviews: aiReviews,
+		TotalSnippets:     snippets,
+		TotalAIReviews:    aiReviews,
 	}, nil
 }

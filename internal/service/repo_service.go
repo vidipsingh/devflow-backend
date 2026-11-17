@@ -2,17 +2,17 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
-	"encoding/json"
 
-	"devflow-backend/internal/models"
-	"devflow-backend/internal/repository"
 	"devflow-backend/internal/database"
 	"devflow-backend/internal/kafka"
+	"devflow-backend/internal/models"
+	"devflow-backend/internal/repository"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -27,8 +27,8 @@ var (
 )
 
 const (
-    repoCacheTTL  = 1 * time.Hour
-    reposCacheTTL = 5 * time.Minute
+	repoCacheTTL  = 1 * time.Hour
+	reposCacheTTL = 5 * time.Minute
 )
 
 var slugRe = regexp.MustCompile(`[^a-z0-9\-]`)
@@ -41,20 +41,20 @@ func slugify(name string) string {
 
 func ListRepositories(ctx context.Context, ownerID bson.ObjectID, visibility string) ([]models.Repository, error) {
 	cacheKey := fmt.Sprintf("repos:%s:%s", ownerID.Hex(), visibility)
-    if cached, ok := database.RedisGet(ctx, cacheKey); ok {
-        var repos []models.Repository
-        if err := json.Unmarshal([]byte(cached), &repos); err == nil {
-            return repos, nil
-        }
-    }
-    repos, err := repository.FindReposByOwner(ctx, ownerID, visibility)
-    if err != nil {
-        return nil, err
-    }
-    if data, err := json.Marshal(repos); err == nil {
-        database.RedisSet(ctx, cacheKey, string(data), reposCacheTTL)
-    }
-    return repos, nil
+	if cached, ok := database.RedisGet(ctx, cacheKey); ok {
+		var repos []models.Repository
+		if err := json.Unmarshal([]byte(cached), &repos); err == nil {
+			return repos, nil
+		}
+	}
+	repos, err := repository.FindReposByOwner(ctx, ownerID, visibility)
+	if err != nil {
+		return nil, err
+	}
+	if data, err := json.Marshal(repos); err == nil {
+		database.RedisSet(ctx, cacheKey, string(data), reposCacheTTL)
+	}
+	return repos, nil
 }
 
 // ListPublicRepositories returns all public repos, optionally filtered by search term.
@@ -264,7 +264,7 @@ func DeleteRepository(ctx context.Context, ownerID bson.ObjectID, slug string) e
 	}
 	database.RedisDel(ctx, fmt.Sprintf("repo:%s:%s", ownerID.Hex(), slug))
 	database.RedisDelPattern(ctx, fmt.Sprintf("repos:%s:*", ownerID.Hex()))
-	
+
 	ownerName := ""
 	if u, err := repository.FindUserByIDRaw(ctx, ownerID.Hex()); err == nil && u != nil {
 		ownerName = u.Username
@@ -315,7 +315,7 @@ func GetStarStatus(ctx context.Context, callerID bson.ObjectID, slug string) (bo
 }
 
 // StarRepository adds or removes callerID from the repo's starredBy list
-// (idempotent per-user — double-star is rejected with ErrAlreadyStarred).
+// (idempotent per-user - double-star is rejected with ErrAlreadyStarred).
 func StarRepository(ctx context.Context, callerID bson.ObjectID, slug string, star bool) (*models.Repository, error) {
 	repo, err := ResolveRepo(ctx, callerID, slug)
 	if err != nil {
@@ -424,7 +424,7 @@ func ForkRepository(ctx context.Context, callerID bson.ObjectID, callerUsername,
 	if err := repository.CreateRepo(ctx, fork); err != nil {
 		return nil, err
 	}
-	
+
 	kafka.Publish(ctx, kafka.TopicRepoEvents, kafka.RepoEvent{
 		Type: "repo.forked", RepoID: fork.ID.Hex(),
 		RepoSlug: fork.Slug, FullName: fork.FullName,

@@ -1,28 +1,28 @@
 package service
 
 import (
-    "context"
-    "encoding/json"
-    "fmt"
-    "log"
-    "os"
-    "strings"
-    "time"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"strings"
+	"time"
 
-    "devflow-backend/internal/models"
-    "devflow-backend/internal/repository"
+	"devflow-backend/internal/models"
+	"devflow-backend/internal/repository"
 
-    "github.com/google/generative-ai-go/genai"
-    "go.mongodb.org/mongo-driver/v2/bson"
-    "google.golang.org/api/option"
+	"github.com/google/generative-ai-go/genai"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"google.golang.org/api/option"
 )
 
 const geminiModel = "gemini-2.0-flash"
 
 // geminiReviewResponse matches the JSON we ask Gemini to return
 type geminiReviewResponse struct {
-    Summary     string                `json:"summary"`
-    Suggestions []models.AISuggestion `json:"suggestions"`
+	Summary     string                `json:"summary"`
+	Suggestions []models.AISuggestion `json:"suggestions"`
 }
 
 // ReviewPRAsync fetches file contents and calls Gemini. Safe to run in a goroutine
@@ -30,7 +30,7 @@ func ReviewPRAsync(ctx context.Context, pr *models.PullRequest, repoID bson.Obje
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		_ = markReview(ctx, pr.ID, &models.AIReview{
-			Status: "skipped",
+			Status:   "skipped",
 			ErrorMsg: "GEMINI_API_KEY not set",
 		})
 		return
@@ -42,8 +42,8 @@ func ReviewPRAsync(ctx context.Context, pr *models.PullRequest, repoID bson.Obje
 	if len(pr.ChangedFiles) == 0 {
 		now := time.Now()
 		_ = markReview(ctx, pr.ID, &models.AIReview{
-			Status: "skipped",
-			Summary: "No changed files to review",
+			Status:     "skipped",
+			Summary:    "No changed files to review",
 			ReviewedAt: &now,
 		})
 		return
@@ -57,7 +57,7 @@ func ReviewPRAsync(ctx context.Context, pr *models.PullRequest, repoID bson.Obje
 		log.Printf("[AI Review] PR #%d error: %v", pr.Number, err)
 		errMsg := err.Error()
 		_ = markReview(ctx, pr.ID, &models.AIReview{
-			Status: "error",
+			Status:   "error",
 			ErrorMsg: errMsg,
 		})
 		return
@@ -119,25 +119,25 @@ func callGemini(ctx context.Context, apiKey string, pr *models.PullRequest, file
 
 	raw := extractText(resp)
 	parsed, err := parseReview(raw)
-	 if err != nil {
-        return nil, fmt.Errorf("parse response: %w (raw: %.200s)", err, raw)
-    }
+	if err != nil {
+		return nil, fmt.Errorf("parse response: %w (raw: %.200s)", err, raw)
+	}
 
 	now := time.Now()
-    return &models.AIReview{
-        Status:      "done",
-        Summary:     parsed.Summary,
-        Suggestions: parsed.Suggestions,
-        Model:       geminiModel,
-        ReviewedAt:  &now,
-    }, nil
+	return &models.AIReview{
+		Status:      "done",
+		Summary:     parsed.Summary,
+		Suggestions: parsed.Suggestions,
+		Model:       geminiModel,
+		ReviewedAt:  &now,
+	}, nil
 }
 
 func buildPrompt(pr *models.PullRequest, fileContents string) string {
-    return fmt.Sprintf(`You are a senior software engineer doing a code review.
+	return fmt.Sprintf(`You are a senior software engineer doing a code review.
 Only flag issues that would MEANINGFULLY improve: code modularity, robustness, error handling, security, or performance.
 Do NOT report formatting, style, naming, or cosmetic issues.
-If the code is clean and well-written, return an empty suggestions array — do not invent issues.
+If the code is clean and well-written, return an empty suggestions array - do not invent issues.
 
 Pull Request: "%s"
 Description: %s
@@ -160,11 +160,11 @@ Respond ONLY with valid JSON (no markdown, no code fences) matching this exact s
     }
   ]
 }`,
-        pr.Title,
-        pr.Body,
-        strings.Join(pr.ChangedFiles, ", "),
-        fileContents,
-    )
+		pr.Title,
+		pr.Body,
+		strings.Join(pr.ChangedFiles, ", "),
+		fileContents,
+	)
 }
 
 func extractText(resp *genai.GenerateContentResponse) string {
@@ -186,10 +186,10 @@ func extractText(resp *genai.GenerateContentResponse) string {
 
 func parseReview(raw string) (*geminiReviewResponse, error) {
 	// Strip markdown code fences if Gemini wraps with them anyway
-    raw = strings.TrimPrefix(raw, "```json")
-    raw = strings.TrimPrefix(raw, "```")
-    raw = strings.TrimSuffix(raw, "```")
-    raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "```json")
+	raw = strings.TrimPrefix(raw, "```")
+	raw = strings.TrimSuffix(raw, "```")
+	raw = strings.TrimSpace(raw)
 
 	var result geminiReviewResponse
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {

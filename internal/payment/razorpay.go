@@ -30,7 +30,7 @@ func NewClient() *Client {
 	keyID := os.Getenv("RAZORPAY_KEY_ID")
 	secret := os.Getenv("RAZORPAY_KEY_SECRET")
 	if keyID == "" || secret == "" {
-		log.Println("[WARNING] RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET is not set — payment endpoints will fail")
+		log.Println("[WARNING] RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET is not set - payment endpoints will fail")
 	}
 	return &Client{
 		rz:     razorpay.NewClient(keyID, secret),

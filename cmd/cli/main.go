@@ -1,20 +1,20 @@
 package main
 
 import (
-    "fmt"
-    "os"
+	"fmt"
+	"os"
 
-    "devflow-backend/internal/cli/commands"
-    "devflow-backend/internal/cli/config"
+	"devflow-backend/internal/cli/commands"
+	"devflow-backend/internal/cli/config"
 
-    "github.com/spf13/cobra"
+	"github.com/spf13/cobra"
 )
 
 func main() {
-    root := &cobra.Command{
-        Use:   "devflow",
-        Short: "DevFlow CLI — manage repos, files, and issues from your terminal",
-        Long: `
+	root := &cobra.Command{
+		Use:   "devflow",
+		Short: "DevFlow CLI - manage repos, files, and issues from your terminal",
+		Long: `
   ____              _____ _               
  |  _ \  _____   _|  ___| | _____      __
  | | | |/ _ \ \ / / |_  | |/ _ \ \ /\ / /
@@ -23,50 +23,50 @@ func main() {
 
  Manage repositories, push/pull files, and track issues.
 `,
-        SilenceUsage: true,
-    }
+		SilenceUsage: true,
+	}
 
-    // Global --host flag to override the API base URL
-    root.PersistentFlags().String("host", "", "Override API host (e.g. https://api.devflow.io)")
+	// Global --host flag to override the API base URL
+	root.PersistentFlags().String("host", "", "Override API host (e.g. https://api.devflow.io)")
 
-    // Register host override before commands run
-    cobra.OnInitialize(func() {
-        host, _ := root.PersistentFlags().GetString("host")
-        if host != "" {
-            cfg, _ := config.Load()
-            cfg.Host = host
-            config.Save(cfg)
-        }
-    })
+	// Register host override before commands run
+	cobra.OnInitialize(func() {
+		host, _ := root.PersistentFlags().GetString("host")
+		if host != "" {
+			cfg, _ := config.Load()
+			cfg.Host = host
+			config.Save(cfg)
+		}
+	})
 
-    // Register all command groups
-    root.AddCommand(
-        commands.AuthCmd,
-        commands.RepoCmd,
-        commands.CloneCmd,
-        commands.PushCmd,
-        commands.LsCmd,
-        commands.CatCmd,
-        commands.CommitsCmd,
-        commands.IssueCmd,
-        
-        commands.InitCmd,
-        commands.AddCmd,
-        commands.StatusCmd,
-        commands.CommitCmd,
-        commands.CheckoutCmd,
-        commands.BranchCmd,
+	// Register all command groups
+	root.AddCommand(
+		commands.AuthCmd,
+		commands.RepoCmd,
+		commands.CloneCmd,
+		commands.PushCmd,
+		commands.LsCmd,
+		commands.CatCmd,
+		commands.CommitsCmd,
+		commands.IssueCmd,
 
-        commands.PrCmd,
-        commands.PushCmd2,
-        commands.PullCmd,
-        commands.LogCmd,
-        commands.StashCmd,
-        commands.UnstashCmd,
-    )
+		commands.InitCmd,
+		commands.AddCmd,
+		commands.StatusCmd,
+		commands.CommitCmd,
+		commands.CheckoutCmd,
+		commands.BranchCmd,
 
-    if err := root.Execute(); err != nil {
-        fmt.Fprintln(os.Stderr, err)
-        os.Exit(1)
-    }
+		commands.PrCmd,
+		commands.PushCmd2,
+		commands.PullCmd,
+		commands.LogCmd,
+		commands.StashCmd,
+		commands.UnstashCmd,
+	)
+
+	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

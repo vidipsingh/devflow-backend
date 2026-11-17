@@ -85,7 +85,7 @@ func DeleteRepo(ctx context.Context, id bson.ObjectID) error {
 	return err
 }
 
-// FindRepoBySlug finds a repo by slug only (any owner) — used for starring
+// FindRepoBySlug finds a repo by slug only (any owner) - used for starring
 func FindRepoBySlug(ctx context.Context, slug string) (*models.Repository, error) {
 	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -98,7 +98,7 @@ func FindRepoBySlug(ctx context.Context, slug string) (*models.Repository, error
 	return &repo, err
 }
 
-// FindPublicRepoBySlug finds a public repo by slug (any owner) — used so non-owners
+// FindPublicRepoBySlug finds a public repo by slug (any owner) - used so non-owners
 // can read public repositories, PRs, and issues.
 func FindPublicRepoBySlug(ctx context.Context, slug string) (*models.Repository, error) {
 	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -166,7 +166,7 @@ func UpdateRepoRaw(ctx context.Context, id bson.ObjectID, update bson.M) error {
 	return err
 }
 
-// FindRepoByOwnerAndName finds a repo by ownerId + name (case-insensitive) — legacy fallback
+// FindRepoByOwnerAndName finds a repo by ownerId + name (case-insensitive) - legacy fallback
 // for repos created before slug enforcement where name may differ from slug.
 func FindRepoByOwnerAndName(ctx context.Context, ownerID bson.ObjectID, name string) (*models.Repository, error) {
 	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -231,9 +231,9 @@ func FindReposByForkedFrom(ctx context.Context, upstreamID bson.ObjectID) ([]mod
 
 // FindRepoByID_Hex looks up a repository by its ObjectID hex string.
 func FindRepoByID_Hex(ctx context.Context, repoIDHex string) (*models.Repository, error) {
-    oid, err := bson.ObjectIDFromHex(repoIDHex)
-    if err != nil {
-        return nil, err
-    }
-    return FindRepoByID(ctx, oid)
+	oid, err := bson.ObjectIDFromHex(repoIDHex)
+	if err != nil {
+		return nil, err
+	}
+	return FindRepoByID(ctx, oid)
 }

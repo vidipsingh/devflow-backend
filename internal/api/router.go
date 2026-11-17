@@ -54,6 +54,12 @@ func NewRouter() *gin.Engine {
 			public.GET("/repos", handlers.ListPublicRepositories)
 		}
 
+		// Public stats (no auth required)
+		stats := v1.Group("/stats")
+		{
+			stats.GET("/users", handlers.GetUserCount)
+		}
+
 		// Auth
 		auth := v1.Group("/auth")
 		{
@@ -76,7 +82,7 @@ func NewRouter() *gin.Engine {
 			marketplace.GET("/snippets/:snippetId/reviews", handlers.GetSnippetReviews)
 		}
 
-		// WebSocket — auth via ?token= query param
+		// WebSocket - auth via ?token= query param
 		v1.GET("/ws/pair/:sessionId", middleware.RequireAuthWS, handlers.PairSessionWS)
 		v1.GET("/ws/review/:sessionId", middleware.RequireAuthWS, reviewHandler.WebSocketSignaling)
 		v1.GET("/teams/:slug/discussions/ws", middleware.RequireAuthWS, handlers.WsDiscussions(discHub))
@@ -121,27 +127,27 @@ func NewRouter() *gin.Engine {
 				repos.GET("/:name/forks", handlers.ListForks)
 
 				// Issues
-					issues := repos.Group("/:name/issues")
-					{
-						issues.GET("", handlers.ListIssues)
-						issues.POST("", handlers.CreateIssue)
-						issues.GET("/:number", handlers.GetIssue)
-						issues.PATCH("/:number", handlers.UpdateIssue)
-						issues.DELETE("/:number", handlers.DeleteIssue)
-						issues.POST("/:number/comments", handlers.AddComment)
-						issues.PATCH("/:number/comments/:commentId", handlers.UpdateComment)
-						issues.DELETE("/:number/comments/:commentId", handlers.DeleteComment)
-						issues.POST("/:number/reactions", handlers.ReactToIssue)
-					}
-	
-					// Labels (per-repository label definitions)
-					labels := repos.Group("/:name/labels")
-					{
-						labels.GET("", handlers.ListRepoLabels)
-						labels.POST("", handlers.CreateRepoLabel)
-						labels.PATCH("/:labelId", handlers.UpdateRepoLabel)
-						labels.DELETE("/:labelId", handlers.DeleteRepoLabel)
-					}
+				issues := repos.Group("/:name/issues")
+				{
+					issues.GET("", handlers.ListIssues)
+					issues.POST("", handlers.CreateIssue)
+					issues.GET("/:number", handlers.GetIssue)
+					issues.PATCH("/:number", handlers.UpdateIssue)
+					issues.DELETE("/:number", handlers.DeleteIssue)
+					issues.POST("/:number/comments", handlers.AddComment)
+					issues.PATCH("/:number/comments/:commentId", handlers.UpdateComment)
+					issues.DELETE("/:number/comments/:commentId", handlers.DeleteComment)
+					issues.POST("/:number/reactions", handlers.ReactToIssue)
+				}
+
+				// Labels (per-repository label definitions)
+				labels := repos.Group("/:name/labels")
+				{
+					labels.GET("", handlers.ListRepoLabels)
+					labels.POST("", handlers.CreateRepoLabel)
+					labels.PATCH("/:labelId", handlers.UpdateRepoLabel)
+					labels.DELETE("/:labelId", handlers.DeleteRepoLabel)
+				}
 
 				// Notifications
 				notifs := protected.Group("/notifications")
@@ -275,23 +281,23 @@ func NewRouter() *gin.Engine {
 					teams.POST("/:slug/discussions/:discussionId/replies", handlers.AddReply(discHub))
 					teams.DELETE("/:slug/discussions/:discussionId/replies/:replyId", handlers.DeleteReply(discHub))
 					// Reactions
-						teams.GET("/:slug/discussions/:discussionId/my-reactions", handlers.GetMyReactions)
-						teams.POST("/:slug/discussions/:discussionId/react", handlers.ReactToDiscussion(discHub))
-						teams.POST("/:slug/discussions/:discussionId/replies/:replyId/react", handlers.ReactToReply(discHub))
+					teams.GET("/:slug/discussions/:discussionId/my-reactions", handlers.GetMyReactions)
+					teams.POST("/:slug/discussions/:discussionId/react", handlers.ReactToDiscussion(discHub))
+					teams.POST("/:slug/discussions/:discussionId/replies/:replyId/react", handlers.ReactToReply(discHub))
 					// WebSocket route is registered at v1 level above (uses RequireAuthWS)
 				}
 
 				// Settings
 				settings := protected.Group("/settings")
 				{
-					settings.GET("/profile",                    handlers.GetProfile)
-					settings.PATCH("/profile",                  handlers.UpdateProfile)
-					settings.PATCH("/preferences",              handlers.UpdatePreferences)
-					settings.POST("/security/change-password",  handlers.ChangePassword)
-					settings.GET("/security/sessions",          handlers.ListSessions)
-					settings.DELETE("/security/sessions",       handlers.RevokeAllSessions)
+					settings.GET("/profile", handlers.GetProfile)
+					settings.PATCH("/profile", handlers.UpdateProfile)
+					settings.PATCH("/preferences", handlers.UpdatePreferences)
+					settings.POST("/security/change-password", handlers.ChangePassword)
+					settings.GET("/security/sessions", handlers.ListSessions)
+					settings.DELETE("/security/sessions", handlers.RevokeAllSessions)
 					settings.DELETE("/security/sessions/:sessionId", handlers.RevokeSession)
-					settings.DELETE("/account",                 handlers.DeleteAccount)
+					settings.DELETE("/account", handlers.DeleteAccount)
 				}
 			}
 		}

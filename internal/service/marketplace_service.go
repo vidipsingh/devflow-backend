@@ -47,7 +47,6 @@ func GetMySnippets(ctx context.Context, creatorID string) ([]models.Snippet, err
 	return repository.FindSnippetsByCreator(ctx, creatorID)
 }
 
-
 type CreateSnippetInput struct {
 	Title       string
 	Description string
@@ -119,16 +118,36 @@ type UpdateSnippetInput struct {
 
 func UpdateSnippet(ctx context.Context, id, ownerID string, in UpdateSnippetInput) error {
 	update := bson.M{}
-	if in.Title != nil       { update["title"] = *in.Title }
-	if in.Description != nil { update["description"] = *in.Description }
-	if in.Code != nil        { update["code"] = *in.Code }
-	if in.Preview != nil     { update["preview"] = *in.Preview }
-	if in.Language != nil    { update["language"] = *in.Language }
-	if in.Tags != nil        { update["tags"] = in.Tags }
-	if in.Category != nil    { update["category"] = *in.Category }
-	if in.Version != nil     { update["version"] = *in.Version }
-	if in.PricingType != nil { update["pricing.type"] = *in.PricingType }
-	if in.Price != nil       { update["pricing.price"] = *in.Price }
+	if in.Title != nil {
+		update["title"] = *in.Title
+	}
+	if in.Description != nil {
+		update["description"] = *in.Description
+	}
+	if in.Code != nil {
+		update["code"] = *in.Code
+	}
+	if in.Preview != nil {
+		update["preview"] = *in.Preview
+	}
+	if in.Language != nil {
+		update["language"] = *in.Language
+	}
+	if in.Tags != nil {
+		update["tags"] = in.Tags
+	}
+	if in.Category != nil {
+		update["category"] = *in.Category
+	}
+	if in.Version != nil {
+		update["version"] = *in.Version
+	}
+	if in.PricingType != nil {
+		update["pricing.type"] = *in.PricingType
+	}
+	if in.Price != nil {
+		update["pricing.price"] = *in.Price
+	}
 
 	if len(update) == 0 {
 		return errors.New("nothing to update")
@@ -193,7 +212,7 @@ func CreatePurchaseOrder(ctx context.Context, snippetID, buyerID string) (*Purch
 		return nil, errors.New("snippet is not published")
 	}
 	if s.Pricing.Type != "paid" {
-		return nil, errors.New("snippet is free — no purchase needed")
+		return nil, errors.New("snippet is free - no purchase needed")
 	}
 	if s.CreatorID.Hex() == buyerID {
 		return nil, errors.New("you cannot purchase your own snippet")
@@ -209,7 +228,7 @@ func CreatePurchaseOrder(ctx context.Context, snippetID, buyerID string) (*Purch
 	}
 
 	amountPaise := int64(math.Round(s.Pricing.Price * 100))
-	// Always use a hard 3-char ISO currency code — Razorpay rejects anything else.
+	// Always use a hard 3-char ISO currency code - Razorpay rejects anything else.
 	currency := "INR"
 	if len(s.Pricing.Currency) == 3 {
 		currency = s.Pricing.Currency
@@ -254,7 +273,7 @@ func VerifyPurchase(ctx context.Context, orderID, paymentID, signature, buyerID 
 	if !rzClient.VerifySignature(orderID, paymentID, signature) {
 		return errors.New("invalid payment signature")
 	}
-	
+
 	purchase, err := repository.FindPurchaseByOrderID(ctx, orderID)
 	if err != nil || purchase == nil {
 		return errors.New("purchase order not found")
@@ -356,4 +375,3 @@ func CreateReview(ctx context.Context, snippetID, authorID, authorUsername strin
 
 	return r, nil
 }
-

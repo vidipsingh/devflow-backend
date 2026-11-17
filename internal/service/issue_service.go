@@ -153,7 +153,7 @@ func CreateIssue(ctx context.Context, callerID bson.ObjectID, callerUsername, re
 	return issue, nil
 }
 
-// UpdateIssue edits any mutable field — only author or repo owner may do so
+// UpdateIssue edits any mutable field - only author or repo owner may do so
 func UpdateIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int, req models.UpdateIssueRequest) (*models.Issue, error) {
 	issue, err := GetIssue(ctx, callerID, repoSlug, number)
 	if err != nil {
@@ -247,7 +247,7 @@ func UpdateIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, n
 	return repository.FindIssueByNumber(ctx, repo.ID, number)
 }
 
-// DeleteIssue hard-deletes — only author or repo owner can delete it
+// DeleteIssue hard-deletes - only author or repo owner can delete it
 func DeleteIssue(ctx context.Context, callerID bson.ObjectID, repoSlug string, number int) error {
 	issue, err := GetIssue(ctx, callerID, repoSlug, number)
 	if err != nil {

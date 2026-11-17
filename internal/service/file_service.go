@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"devflow-backend/internal/database"
+	"devflow-backend/internal/kafka"
 	"devflow-backend/internal/models"
 	"devflow-backend/internal/repository"
-	"devflow-backend/internal/kafka"
 
 	"github.com/gabriel-vasile/mimetype"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -134,7 +134,7 @@ func UploadFile(ctx context.Context, ownerID bson.ObjectID, ownerName string, re
 }
 
 // EditFile updates an existing file in-place (plain-text content) and creates a new commit.
-// Unlike UploadFile, the content is received as raw UTF-8 — no base64 decoding needed.
+// Unlike UploadFile, the content is received as raw UTF-8 - no base64 decoding needed.
 func EditFile(ctx context.Context, ownerID bson.ObjectID, ownerName string, repoSlug string, req models.EditFileRequest) (*models.RepoCommit, error) {
 	// 1. Resolve repository
 	repo, err := ResolveRepo(ctx, ownerID, repoSlug)

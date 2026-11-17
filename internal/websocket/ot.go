@@ -4,7 +4,7 @@ import "devflow-backend/internal/models"
 
 // Transform adjusts op2 so it can be applied after op1 has already been applied
 func Transform(op1, op2 models.OTOperation) models.OTOperation {
-	result := op2 
+	result := op2
 	if op1.Insert != "" && op2.Insert != "" {
 		// Both are inserts
 		if op1.Index <= op2.Index {
@@ -12,7 +12,7 @@ func Transform(op1, op2 models.OTOperation) models.OTOperation {
 		}
 		return result
 	}
-	
+
 	if op1.Insert != "" && op2.Delete > 0 {
 		// op1 inserts, op2 deletes
 		insertLen := len([]rune(op1.Insert))
@@ -46,10 +46,10 @@ func Transform(op1, op2 models.OTOperation) models.OTOperation {
 			// op1 is entirely before op2
 			result.Index -= op1.Delete
 		} else if op1.Index >= op2End {
-			// op1 is entirely after op2 — no adjustment needed
-		} else { 
-			// Overlapping deletes — shrink op2's delete range
-			overlapStart := max(op1.Index,  op2.Index)
+			// op1 is entirely after op2 - no adjustment needed
+		} else {
+			// Overlapping deletes - shrink op2's delete range
+			overlapStart := max(op1.Index, op2.Index)
 			overlapEnd := min(op1End, op2End)
 			overlap := overlapEnd - overlapStart
 			result.Delete -= overlap

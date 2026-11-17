@@ -98,7 +98,7 @@ func VerifyPayment(c *gin.Context) {
 		return
 	}
 
-	// 1. Verify HMAC signature — prevents spoofing
+	// 1. Verify HMAC signature - prevents spoofing
 	if !getRzClient().VerifySignature(body.RazorpayOrderID, body.RazorpayPaymentID, body.RazorpaySignature) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "invalid payment signature"})
 		return

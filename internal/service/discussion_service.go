@@ -84,8 +84,8 @@ func GetDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discussion
 	return d, replies, nil
 }
 
-// UpdateDiscussion edits title/body — only the author or admin can edit.
-func UpdateDiscussion(ctx context.Context,  callerID bson.ObjectID, slug, discussionID, title, body string) (*models.TeamDiscussion, error) {
+// UpdateDiscussion edits title/body - only the author or admin can edit.
+func UpdateDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discussionID, title, body string) (*models.TeamDiscussion, error) {
 	team, err := repository.FindTeamBySlug(ctx, slug)
 	if err != nil || team == nil {
 		return nil, ErrTeamNotFound
@@ -114,7 +114,7 @@ func UpdateDiscussion(ctx context.Context,  callerID bson.ObjectID, slug, discus
 	return d, nil
 }
 
-// PinDiscussion toggles pin status — admin only.
+// PinDiscussion toggles pin status - admin only.
 func PinDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discussionID string, pin bool) error {
 	team, err := repository.FindTeamBySlug(ctx, slug)
 	if err != nil || team == nil {
@@ -131,7 +131,7 @@ func PinDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discussion
 	return repository.UpdateDiscussion(ctx, oid, bson.M{"pinned": pin})
 }
 
-// ResolveDiscussion marks thread resolved — author or admin.
+// ResolveDiscussion marks thread resolved - author or admin.
 func ResolveDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discussionID string, resolved bool) error {
 	team, err := repository.FindTeamBySlug(ctx, slug)
 	if err != nil || team == nil {
@@ -155,7 +155,7 @@ func ResolveDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discus
 	return repository.UpdateDiscussion(ctx, oid, bson.M{"resolved": resolved})
 }
 
-// DeleteDiscussion removes thread + all replies — author or admin.
+// DeleteDiscussion removes thread + all replies - author or admin.
 func DeleteDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discussionID string) error {
 	team, err := repository.FindTeamBySlug(ctx, slug)
 	if err != nil || team == nil {
@@ -215,7 +215,7 @@ func AddReply(ctx context.Context, callerID bson.ObjectID, slug, discussionID, b
 	return r, nil
 }
 
-// DeleteReply removes a single reply — author or admin.
+// DeleteReply removes a single reply - author or admin.
 func DeleteReply(ctx context.Context, callerID bson.ObjectID, slug, discussionID, replyID string) error {
 	team, err := repository.FindTeamBySlug(ctx, slug)
 	if err != nil || team == nil {
@@ -245,7 +245,7 @@ func DeleteReply(ctx context.Context, callerID bson.ObjectID, slug, discussionID
 }
 
 // ReactToDiscussion toggles a reaction on a discussion thread (one-per-person per reaction key).
-// Returns (added bool, err) — true = reaction was added, false = reaction was removed.
+// Returns (added bool, err) - true = reaction was added, false = reaction was removed.
 func ReactToDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discussionID, reaction string) (bool, error) {
 	team, err := repository.FindTeamBySlug(ctx, slug)
 	if err != nil || team == nil {
@@ -277,7 +277,7 @@ func ReactToDiscussion(ctx context.Context, callerID bson.ObjectID, slug, discus
 }
 
 // ReactToReply toggles a reaction on a discussion reply (one-per-person per reaction key).
-// Returns (added bool, err) — true = reaction was added, false = reaction was removed.
+// Returns (added bool, err) - true = reaction was added, false = reaction was removed.
 func ReactToReply(ctx context.Context, callerID bson.ObjectID, slug, replyID, reaction string) (bool, error) {
 	team, err := repository.FindTeamBySlug(ctx, slug)
 	if err != nil || team == nil {

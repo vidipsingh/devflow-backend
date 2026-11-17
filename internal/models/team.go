@@ -218,7 +218,7 @@ const (
 	TeamActionSubTeamCreated       = "sub_team_created"
 )
 
-// Permission constants — computed from role
+// Permission constants - computed from role
 const (
 	PermRead           = "read"
 	PermWrite          = "write"

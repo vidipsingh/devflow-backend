@@ -22,7 +22,7 @@ func callerUsername(c *gin.Context) string { return c.GetString("username") }
 // Public handlers
 
 // GET /api/v1/marketplace/snippets?limit=6&sort=downloads
-// (legacy / featured — still used by the home page cards)
+// (legacy / featured - still used by the home page cards)
 func GetSnippets(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "6"))
 	sortBy := c.DefaultQuery("sort", "downloads")
@@ -270,7 +270,7 @@ func CreatePurchaseOrder(c *gin.Context) {
 func VerifyPurchase(c *gin.Context) {
 	buyer := callerID(c)
 	sID := snippetID(c)
-	log.Printf("[marketplace] VerifyPurchase start — snippetId=%s buyerId=%s", sID, buyer)
+	log.Printf("[marketplace] VerifyPurchase start - snippetId=%s buyerId=%s", sID, buyer)
 
 	var body struct {
 		RazorpayOrderID   string `json:"razorpayOrderId"   binding:"required"`
@@ -278,16 +278,16 @@ func VerifyPurchase(c *gin.Context) {
 		RazorpaySignature string `json:"razorpaySignature" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		log.Printf("[marketplace] VerifyPurchase bad request — %v", err)
+		log.Printf("[marketplace] VerifyPurchase bad request - %v", err)
 		api.BadRequest(c, err.Error())
 		return
 	}
-	log.Printf("[marketplace] VerifyPurchase verifying — orderId=%s paymentId=%s", body.RazorpayOrderID, body.RazorpayPaymentID)
+	log.Printf("[marketplace] VerifyPurchase verifying - orderId=%s paymentId=%s", body.RazorpayOrderID, body.RazorpayPaymentID)
 
 	err := service.VerifyPurchase(c.Request.Context(),
 		body.RazorpayOrderID, body.RazorpayPaymentID, body.RazorpaySignature, buyer)
 	if err != nil {
-		log.Printf("[marketplace] VerifyPurchase error — %v", err)
+		log.Printf("[marketplace] VerifyPurchase error - %v", err)
 		if err.Error() == "invalid payment signature" {
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"success": false, "error": err.Error()})
 			return
@@ -295,7 +295,7 @@ func VerifyPurchase(c *gin.Context) {
 		api.BadRequest(c, err.Error())
 		return
 	}
-	log.Printf("[marketplace] VerifyPurchase success — snippetId=%s buyerId=%s orderId=%s", sID, buyer, body.RazorpayOrderID)
+	log.Printf("[marketplace] VerifyPurchase success - snippetId=%s buyerId=%s orderId=%s", sID, buyer, body.RazorpayOrderID)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "purchase verified"})
 }
 

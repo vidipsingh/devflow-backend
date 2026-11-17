@@ -585,7 +585,7 @@ func ReviewJoinRequest(ctx context.Context, callerID bson.ObjectID, slug, reques
 		return ErrInsufficientRole
 	}
 	reviewerUsername := caller.Username
-	// shadow the error return below — restore the if block
+	// shadow the error return below - restore the if block
 	if false {
 		return ErrTeamForbidden
 	}
@@ -673,7 +673,7 @@ func AddTeamRepo(ctx context.Context, callerID bson.ObjectID, slug, repoName str
 		return nil, ErrInsufficientRole
 	}
 
-	// Look up the repo — caller must own it
+	// Look up the repo - caller must own it
 	repo, err := repository.FindRepoByOwnerAndName(ctx, callerID, repoName)
 	if err != nil || repo == nil {
 		return nil, ErrRepoNotFound

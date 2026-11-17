@@ -1,12 +1,12 @@
 package kafka
 
 import (
-    "context"
-    "encoding/json"
-    "log"
-    "time"
+	"context"
+	"encoding/json"
+	"log"
+	"time"
 
-    "github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go"
 )
 
 // HandlerFunc is called for each message on a topic.
@@ -19,15 +19,15 @@ func StartConsumer(ctx context.Context, topic, groupID string, handler HandlerFu
 	if !enabled {
 		return
 	}
-	go func () {
+	go func() {
 		r := kafka.NewReader(kafka.ReaderConfig{
-            Brokers:        brokers,
-            Topic:          topic,
-            GroupID:        groupID,
-            MinBytes:       1,
-            MaxBytes:       1e6, // 1 MB
-            CommitInterval: time.Second,
-        })
+			Brokers:        brokers,
+			Topic:          topic,
+			GroupID:        groupID,
+			MinBytes:       1,
+			MaxBytes:       1e6, // 1 MB
+			CommitInterval: time.Second,
+		})
 		defer r.Close()
 		log.Printf("kafka consumer [%s/%s] started", topic, groupID)
 		for {
@@ -36,9 +36,9 @@ func StartConsumer(ctx context.Context, topic, groupID string, handler HandlerFu
 				if ctx.Err() != nil {
 					return //graceful shutdown
 				}
-				log.Printf("kafka consumer [%s] read error: %v — retrying in 2s", topic, err)
-                time.Sleep(2 * time.Second)
-                continue
+				log.Printf("kafka consumer [%s] read error: %v - retrying in 2s", topic, err)
+				time.Sleep(2 * time.Second)
+				continue
 			}
 			if err := handler(ctx, m.Value); err != nil {
 				log.Printf("kafka consumer [%s] handler error: %v", topic, err)
@@ -49,5 +49,5 @@ func StartConsumer(ctx context.Context, topic, groupID string, handler HandlerFu
 
 // DecodeJSON is a helper to unmarshal a raw message into a typed struct.
 func DecodeJSON(raw []byte, out any) error {
-    return json.Unmarshal(raw, out)
+	return json.Unmarshal(raw, out)
 }

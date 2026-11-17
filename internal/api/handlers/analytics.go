@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	api "devflow-backend/internal/api/response"
+	"devflow-backend/internal/repository"
 	"devflow-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -84,4 +85,15 @@ func GetPlatformStats(c *gin.Context) {
 		return
 	}
 	api.OK(c, stats)
+}
+
+// GetUserCount handles GET /api/v1/stats/users
+// Returns the total number of registered users — used by the landing page hero counter.
+func GetUserCount(c *gin.Context) {
+	count, err := repository.CountUsers(c.Request.Context())
+	if err != nil {
+		api.InternalError(c, "failed to count users")
+		return
+	}
+	api.OK(c, gin.H{"count": count})
 }

@@ -31,7 +31,7 @@ type ReviewOutgoing struct {
 	To           string                     `json:"to,omitempty"`
 	Payload      json.RawMessage            `json:"payload,omitempty"`
 	Participants []models.ReviewParticipant `json:"participants,omitempty"`
-	// mute-state broadcast fields — forwarded as-is
+	// mute-state broadcast fields - forwarded as-is
 	AudioMuted *bool `json:"audioMuted,omitempty"`
 	VideoMuted *bool `json:"videoMuted,omitempty"`
 }
@@ -48,7 +48,7 @@ type ReviewClient struct {
 	send      chan []byte
 }
 
-// NewReviewClient is the public constructor — all fields remain unexported.
+// NewReviewClient is the public constructor - all fields remain unexported.
 func NewReviewClient(
 	hub *ReviewHub,
 	conn *websocket.Conn,

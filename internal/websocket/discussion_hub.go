@@ -1,4 +1,3 @@
-
 package websocket
 
 import (
@@ -48,7 +47,7 @@ const (
 	discWriteWait  = 10 * time.Second
 	discPongWait   = 60 * time.Second
 	discPingPeriod = (discPongWait * 9) / 10
-	discMaxMsgSize = 4 * 1024 // 4 KB — clients only send pings
+	discMaxMsgSize = 4 * 1024 // 4 KB - clients only send pings
 )
 
 func (c *DiscussionClient) ReadPump() {

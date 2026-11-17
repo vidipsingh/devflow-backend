@@ -14,6 +14,14 @@ import (
 
 const userCacheTTL = 6 * time.Hour
 
+// CountUsers returns the total number of registered users in the users collection.
+func CountUsers(ctx context.Context) (int64, error) {
+	col := database.Collection("users")
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return col.CountDocuments(ctx, bson.M{})
+}
+
 type UserRepo struct {
 	col *mongo.Collection
 }
@@ -32,7 +40,7 @@ func FindUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	var user models.User
 	err := col.FindOne(ctx, bson.M{"email": email}).Decode(&user)
 	if err == mongo.ErrNoDocuments {
-		return nil, nil // user not found — not an error
+		return nil, nil // user not found - not an error
 	}
 	if err != nil {
 		return nil, err
@@ -49,7 +57,7 @@ func FindUserByUsername(ctx context.Context, username string) (*models.User, err
 	var user models.User
 	err := col.FindOne(ctx, bson.M{"username": username}).Decode(&user)
 	if err == mongo.ErrNoDocuments {
-		return nil, nil // user not found — not an error
+		return nil, nil // user not found - not an error
 	}
 	if err != nil {
 		return nil, err
