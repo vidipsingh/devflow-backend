@@ -21,23 +21,36 @@ func GetProfile(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
+
+	// Compute live repo stats from the repositories collection so that
+	// user.Stats.PublicRepos / TotalStars are never stale / zero.
+	overview, err := repository.GetRepoOverview(c.Request.Context(), userID)
+	if err != nil || overview == nil {
+		overview = &repository.RepoOverview{}
+	}
+
+	liveStats := models.UserStats{
+		PublicRepos: overview.PublicRepos,
+		TotalStars:  overview.TotalStars,
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"id":          user.ID.Hex(),
-			"name":        user.Name,
-			"username":    user.Username,
-			"email":       user.Email,
-			"avatar":      user.Avatar,
-			"bio":         user.Bio,
-			"plan":        user.Plan,
-			"isVerified":  user.IsVerified,
-			"stats":       user.Stats,
-			"preferences": user.Preferences,
+			"id":           user.ID.Hex(),
+			"name":         user.Name,
+			"username":     user.Username,
+			"email":        user.Email,
+			"avatar":       user.Avatar,
+			"bio":          user.Bio,
+			"plan":         user.Plan,
+			"isVerified":   user.IsVerified,
+			"stats":        liveStats,
+			"preferences":  user.Preferences,
 			"subscription": user.Subscription,
-			"aiUsage":     user.AIUsage,
-			"wallet":      user.Wallet,
-			"createdAt":   user.CreatedAt,
+			"aiUsage":      user.AIUsage,
+			"wallet":       user.Wallet,
+			"createdAt":    user.CreatedAt,
 		},
 	})
 }
