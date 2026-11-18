@@ -3,10 +3,10 @@ package models
 import "time"
 
 type PlatformStats struct {
-	TotalUsers       int64 `json:"totalUsers"`
-	TotalRepositories int64 `json:"totalRepositories"`
-	TotalSnippets    int64 `json:"totalSnippets"`
-	TotalAIReviews   int64 `json:"totalAIReviews"`
+	TotalUsers          int64 `json:"totalUsers"`
+	TotalRepositories   int64 `json:"totalRepositories"`
+	TotalSnippets       int64 `json:"totalSnippets"`
+	TotalPullRequests   int64 `json:"totalPullRequests"`
 }
 
 type DailyAnalytics struct {

@@ -719,7 +719,7 @@ func GetPlatformStats(ctx context.Context) (*models.PlatformStats, error) {
 		return nil, err
 	}
 
-	aiReviews, err := db.Collection("aiReviews").EstimatedDocumentCount(timeout)
+	issues, err := db.Collection("issues").EstimatedDocumentCount(timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -728,6 +728,6 @@ func GetPlatformStats(ctx context.Context) (*models.PlatformStats, error) {
 		TotalUsers:        users,
 		TotalRepositories: repos,
 		TotalSnippets:     snippets,
-		TotalAIReviews:    aiReviews,
+		TotalPullRequests: issues,
 	}, nil
 }
